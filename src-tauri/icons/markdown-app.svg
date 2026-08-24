@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc" data-icon-role="markdown-app">
+  <title id="title">Markdown 文档</title>
+  <desc id="desc">A transparent folded Markdown document with an editing pencil</desc>
+  <defs>
+    <linearGradient id="app-paper" x1="43" y1="11" x2="205" y2="247" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFEFA"/>
+      <stop offset=".62" stop-color="#F6F7F4"/>
+      <stop offset="1" stop-color="#E7ECEE"/>
+    </linearGradient>
+    <linearGradient id="app-fold" x1="148" y1="11" x2="213" y2="77" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EDF2F3"/>
+      <stop offset="1" stop-color="#D3DDE1"/>
+    </linearGradient>
+    <linearGradient id="app-pencil" x1="135" y1="193" x2="218" y2="122" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5A24F"/>
+      <stop offset="1" stop-color="#EF8737"/>
+    </linearGradient>
+    <filter id="app-shadow" x="-16%" y="-12%" width="132%" height="136%">
+      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#12202A" flood-opacity=".22"/>
+    </filter>
+  </defs>
+  <g filter="url(#app-shadow)">
+    <path data-icon-part="paper" d="M43 11h105l65 65v149c0 12-10 22-22 22H43c-12 0-22-10-22-22V33c0-12 10-22 22-22Z" fill="url(#app-paper)" stroke="#9EACB3" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M148 11v45c0 12 9 21 21 21h44" fill="url(#app-fold)" stroke="#9EACB3" stroke-width="4" stroke-linejoin="round"/>
+    <g data-icon-part="markdown-mark" fill="#22323D">
+      <path d="M45 159V99h15l18 23 18-23h14v60H94v-34l-16 20-17-20v34H45Z"/>
+      <path fill-rule="evenodd" d="M116 99h21c22 0 36 11 36 30s-14 30-36 30h-21V99Zm16 15v30h6c11 0 18-5 18-15s-7-15-18-15h-6Z"/>
+    </g>
+    <path d="M51 178h74M51 198h57" stroke="#B8C3C7" stroke-width="7" stroke-linecap="round"/>
+    <g data-icon-part="editing-pencil">
+      <path d="m135 193 17 17 66-67-17-17-66 67Z" fill="url(#app-pencil)"/>
+      <path d="m135 193-7 25 24-8Z" fill="#F0C08C"/>
+      <path d="m128 218 12-4-8-8-4 12Z" fill="#34434C"/>
+      <path d="m196 131 17 17 8-9c4-4 4-10 0-14l-3-3c-4-4-10-4-14 0l-8 9Z" fill="#394851"/>
+      <path d="m152 207 66-67" stroke="#FFD0A3" stroke-width="3" stroke-linecap="round" opacity=".72"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc" data-icon-role="markdown-file">
+  <title id="title">Markdown 文件</title>
+  <desc id="desc">A transparent folded Markdown file with an MD mark and downward arrow</desc>
+  <defs>
+    <linearGradient id="file-paper" x1="43" y1="11" x2="205" y2="247" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFEFA"/>
+      <stop offset=".62" stop-color="#F6F7F4"/>
+      <stop offset="1" stop-color="#E7ECEE"/>
+    </linearGradient>
+    <linearGradient id="file-fold" x1="148" y1="11" x2="213" y2="77" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EDF2F3"/>
+      <stop offset="1" stop-color="#D3DDE1"/>
+    </linearGradient>
+    <filter id="file-shadow" x="-16%" y="-12%" width="132%" height="136%">
+      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#12202A" flood-opacity=".22"/>
+    </filter>
+  </defs>
+  <g filter="url(#file-shadow)">
+    <path data-icon-part="paper" d="M43 11h105l65 65v149c0 12-10 22-22 22H43c-12 0-22-10-22-22V33c0-12 10-22 22-22Z" fill="url(#file-paper)" stroke="#9EACB3" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M148 11v45c0 12 9 21 21 21h44" fill="url(#file-fold)" stroke="#9EACB3" stroke-width="4" stroke-linejoin="round"/>
+    <g data-icon-part="markdown-mark" fill="#22323D">
+      <path d="M45 159V99h15l18 23 18-23h14v60H94v-34l-16 20-17-20v34H45Z"/>
+      <path fill-rule="evenodd" d="M116 99h21c22 0 36 11 36 30s-14 30-36 30h-21V99Zm16 15v30h6c11 0 18-5 18-15s-7-15-18-15h-6Z"/>
+    </g>
+    <g data-icon-part="markdown-arrow" fill="#EF8737">
+      <path d="M178 137c7 0 13 6 13 13v31h19l-32 42-32-42h19v-31c0-7 6-13 13-13Z"/>
+    </g>
+  </g>
+</svg>

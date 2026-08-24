@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "draft": {
+    "id": "00000000-0000-4000-8000-000000000020",
+    "sessionId": "legacy-session",
+    "canonicalPath": null,
+    "baselineVersion": null,
+    "bytes": [35, 32, 66],
+    "candidateRevision": 2,
+    "rejectedSourceBuffer": {
+      "baseCandidateRevision": 2,
+      "baseCandidateSha256": "216f4c6ac9ef17add951aa097934202649a6c6ea5f29263b00c59772ea6cff61",
+      "utf16CodeUnitsBase64": "PdgA3g==",
+      "selection": {
+        "anchorBlockKey": "legacy-block",
+        "anchorOffset": 1,
+        "focusBlockKey": "legacy-block",
+        "focusOffset": 2
+      }
+    },
+    "updatedMs": 1700000003000
+  }
+}

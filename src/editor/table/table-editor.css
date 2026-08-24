@@ -1,0 +1,27 @@
+.table-editor { min-width: 0; outline: 0; }
+.table-editor:focus-visible { box-shadow: 0 0 0 2px var(--focus-ring); border-radius: var(--radius-control); }
+.table-editor__toolbar { display: flex; min-height: 32px; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 8px; }
+.table-editor__toolbar button { display: inline-grid; width: 32px; height: 32px; min-height: 32px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 0; color: var(--text-secondary); background: var(--app-surface); }
+.table-editor__toolbar button:hover { color: var(--text-primary); background: var(--accent-subtle); }
+.table-editor__toolbar button[data-table-destructive="true"]:hover { color: var(--danger); border-color: var(--danger); background: #f8eeee; }
+.table-editor__toolbar button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.table-editor__icon { width: 24px; height: 24px; fill: none; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.table-action-icon__base { stroke: currentcolor; stroke-width: 1.25; }
+.table-action-icon__glyph { stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.table-action-icon__glyph--insert { stroke: var(--accent); }
+.table-action-icon__glyph--delete { stroke: var(--danger); }
+.table-action-icon__delete-badge { fill: var(--danger); stroke: none; }
+.table-action-icon__delete-mark { stroke: var(--paper); stroke-width: 1.5; }
+.table-editor__table-wrap { position: relative; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.table-editor table { width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; }
+.table-editor th, .table-editor td { min-width: 9rem; max-width: 34rem; border: 1px solid var(--line); padding: 7px 9px; vertical-align: top; color: var(--text-primary); background: var(--paper); overflow-wrap: break-word; word-break: normal; }
+.table-editor th { color: var(--text-secondary); background: var(--app-surface); font-weight: 600; text-align: left; }
+.table-editor th[aria-selected="true"], .table-editor td[aria-selected="true"] { background: var(--accent-subtle); }
+.table-editor__selection-overlay { position: absolute; z-index: 2; box-sizing: border-box; border: 2px solid var(--accent-pressed); border-radius: 2px; pointer-events: none; }
+.table-editor__cell-value { min-height: 20px; overflow-wrap: break-word; word-break: normal; }
+.table-editor__cell-value > :first-child { margin-top: 0; }
+.table-editor__cell-value > :last-child { margin-bottom: 0; }
+.table-editor [contenteditable="true"] { min-height: 20px; outline: 2px solid var(--focus-ring); outline-offset: -2px; white-space: pre-wrap; }
+.table-editor__selection-count { display: block; margin-top: 6px; color: var(--text-secondary); font-size: 11px; }
+.table-editor__fallback { padding: 10px; border: 1px solid var(--line); color: var(--text-secondary); }
+@media (max-width: 759px) { .table-editor table { min-width: 520px; } }

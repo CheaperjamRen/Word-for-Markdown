@@ -1,0 +1,144 @@
+{
+  "commands": {
+    "takeOpenRequests": "take_open_requests",
+    "openDocument": "open_document",
+    "saveDocument": "save_document",
+    "saveDocumentAs": "save_document_as",
+    "writeDraft": "write_draft",
+    "listDrafts": "list_drafts",
+    "readDraft": "read_draft",
+    "deleteDraft": "delete_draft",
+    "watchDocument": "watch_document",
+    "unwatchDocument": "unwatch_document",
+    "recordFirstReadablePaint": "record_first_readable_paint",
+    "resolveTarget": "resolve_target",
+    "getUiLanguageHint": "get_ui_language_hint"
+  },
+  "events": {
+    "openDocumentRequests": "open-document-requests",
+    "fileChanged": "document-file-changed"
+  },
+  "selectionText": {
+    "kind": "text",
+    "anchorBlockKey": "block-a",
+    "anchorOffset": 1,
+    "focusBlockKey": "block-a",
+    "focusOffset": 2
+  },
+  "selectionTable": {
+    "kind": "table",
+    "tableBlockViewKey": "session-1:table-a",
+    "anchor": { "row": 0, "column": 1 },
+    "focus": { "row": 2, "column": 3 },
+    "origin": { "row": 0, "column": 1 }
+  },
+  "openEventPayload": null,
+  "takeOpenRequestsInvoke": { "request": {} },
+  "takeOpenRequestsResult": ["C:\\docs\\契约.md"],
+  "openInvoke": { "request": { "path": "C:\\docs\\契约.md" } },
+  "openDocument": {
+    "canonicalPath": "C:\\docs\\契约.md",
+    "bytes": [35, 32, 65],
+    "version": { "len": 3, "modifiedMs": 1700000000000, "sha256": "contract-sha256" }
+  },
+  "saveInvoke": {
+    "request": {
+      "canonicalPath": "C:\\docs\\契约.md",
+      "bytes": [35, 32, 66],
+      "expectedVersion": { "len": 3, "modifiedMs": 1700000000000, "sha256": "contract-sha256" }
+    }
+  },
+  "saveAsInvoke": {
+    "request": {
+      "targetPath": "C:\\docs\\另存为.md",
+      "bytes": [35, 32, 67],
+      "expectedTargetVersion": null
+    }
+  },
+  "saveAsResult": {
+    "canonicalPath": "C:\\docs\\另存为.md",
+    "version": { "len": 3, "modifiedMs": 1700000001000, "sha256": "saved-as-sha256" }
+  },
+  "draftPayload": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "sessionId": "session-1",
+    "canonicalPath": "C:\\docs\\契约.md",
+    "baselineVersion": { "len": 3, "modifiedMs": 1700000000000, "sha256": "contract-sha256" },
+    "bytes": [35, 32, 66],
+    "candidateRevision": 2,
+    "rejectedSourceBuffer": {
+      "baseCandidateRevision": 2,
+      "baseCandidateSha256": "216f4c6ac9ef17add951aa097934202649a6c6ea5f29263b00c59772ea6cff61",
+      "utf16CodeUnitsBase64": "PdgA3g==",
+      "selection": {
+        "kind": "text",
+        "anchorBlockKey": "block-a",
+        "anchorOffset": 1,
+        "focusBlockKey": "block-a",
+        "focusOffset": 1
+      }
+    }
+  },
+  "draftRecord": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "sessionId": "session-1",
+    "canonicalPath": "C:\\docs\\契约.md",
+    "baselineVersion": { "len": 3, "modifiedMs": 1700000000000, "sha256": "contract-sha256" },
+    "bytes": [35, 32, 66],
+    "candidateRevision": 2,
+    "rejectedSourceBuffer": {
+      "baseCandidateRevision": 2,
+      "baseCandidateSha256": "216f4c6ac9ef17add951aa097934202649a6c6ea5f29263b00c59772ea6cff61",
+      "utf16CodeUnitsBase64": "PdgA3g==",
+      "selection": {
+        "kind": "text",
+        "anchorBlockKey": "block-a",
+        "anchorOffset": 1,
+        "focusBlockKey": "block-a",
+        "focusOffset": 1
+      }
+    },
+    "updatedMs": 1700000002000
+  },
+  "writeDraftInvoke": { "request": { "draft": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "sessionId": "session-1",
+    "canonicalPath": "C:\\docs\\契约.md",
+    "baselineVersion": { "len": 3, "modifiedMs": 1700000000000, "sha256": "contract-sha256" },
+    "bytes": [35, 32, 66],
+    "candidateRevision": 2,
+    "rejectedSourceBuffer": null
+  } } },
+  "listDraftsInvoke": { "request": {} },
+  "readDraftInvoke": { "request": { "id": "00000000-0000-4000-8000-000000000001" } },
+  "deleteDraftInvoke": { "request": { "id": "00000000-0000-4000-8000-000000000001" } },
+  "watchDocumentInvoke": { "request": { "canonicalPath": "C:\\docs\\契约.md" } },
+  "watchDocumentResult": { "watchId": "00000000-0000-4000-8000-000000000002", "canonicalPath": "C:\\docs\\契约.md" },
+  "unwatchDocumentInvoke": { "request": { "watchId": "00000000-0000-4000-8000-000000000002" } },
+  "fileChangedEvent": {
+    "watchId": "00000000-0000-4000-8000-000000000002",
+    "canonicalPath": "C:\\docs\\契约.md",
+    "kind": "renamed",
+    "newCanonicalPath": "C:\\docs\\契约-新.md"
+  },
+  "desktopFailure": {
+    "code": "changed",
+    "affectedPaths": ["C:\\docs\\契约.md"],
+    "recoveryPaths": ["C:\\docs\\.markdown-spike-recovery"],
+    "draftId": null
+  },
+  "paintInvoke": {
+    "request": {
+      "path": "C:\\docs\\契约.md",
+      "applicationNetworkRequests": 0,
+      "uiContract": {
+        "uiFontSize": "12px",
+        "statusFontSize": "11px",
+        "documentFontSize": "16px",
+        "documentLineHeight": "28px",
+        "toolbarIconWidth": "20px",
+        "iconButtonHeight": "32px"
+      }
+    }
+  }
+}
