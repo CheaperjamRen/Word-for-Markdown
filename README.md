@@ -73,7 +73,7 @@ Word for Markdown 接上这段本地体验。它打开 `.md` / `.markdown` 后�
 
 ## 下载与安装
 
-前往 [Releases](https://github.com/CheaperjamRen/Word-for-Markdown/releases/latest) 下载 `Markdown 文档_0.1.0_x64-setup.exe`。
+前往 [Releases](https://github.com/CheaperjamRen/Word-for-Markdown/releases/latest) 下载 `Word-for-Markdown_0.1.0_x64-setup.exe`。
 
 安装程序支持简体中文与 English，采用当前 Windows 用户安装方式。安装后的应用名称显示为“Markdown 文档”。你可以从应用内打开文件，也可以在 Windows 中把它选择为 `.md` / `.markdown` 的默认打开方式。
 

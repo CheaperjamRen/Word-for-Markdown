@@ -73,9 +73,9 @@ Web links open in the default browser, local Markdown opens in another tab, and 
 
 ## Download and install
 
-Go to [Releases](https://github.com/CheaperjamRen/Word-for-Markdown/releases/latest) and download `Markdown 文档_0.1.0_x64-setup.exe`.
+Go to [Releases](https://github.com/CheaperjamRen/Word-for-Markdown/releases/latest) and download `Word-for-Markdown_0.1.0_x64-setup.exe`.
 
-The installer supports Simplified Chinese and English and installs for the current Windows user. You can open files from inside the app or select it as the default Windows application for `.md` and `.markdown` files. The current installer filename uses the Chinese product name; the English interface displays “Markdown Document.”
+The installer supports Simplified Chinese and English and installs for the current Windows user. You can open files from inside the app or select it as the default Windows application for `.md` and `.markdown` files. The English interface displays “Markdown Document.”
 
 This public preview does not yet use a commercial code-signing certificate. If Windows shows an unknown-publisher warning, first confirm that the installer came from this repository's Releases page and compare its SHA-256 with the value listed in the release notes.
 
