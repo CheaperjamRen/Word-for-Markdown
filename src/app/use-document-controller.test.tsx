@@ -1468,6 +1468,60 @@ describe("document controller", () => {
       expect(rejected.sourceBuffer?.bufferText.charCodeAt(1)).toBe(0xd800);
     });
 
+    it("stores one application history entry for one continuous Source group", async () => {
+      const fixture = hostFixture();
+      vi.mocked(fixture.host.openDocument).mockResolvedValue(payload("C:\\docs\\grouped.md", ""));
+      const controller = createDocumentController(fixture.host);
+      await controller.openPaths(["C:\\docs\\grouped.md"]);
+      const tabId = controller.activeTabId!;
+      expect(controller.setMode(tabId, 0, "source")).toBe("changed");
+
+      for (let revision = 0; revision < 3; revision += 1) {
+        expect(controller.applySourceChangeBatch({
+          sessionId: tabId,
+          baseCandidateRevision: revision,
+          changes: [{ from: revision, to: revision, insert: String.fromCharCode(97 + revision) }],
+          selectionAfter: { anchor: revision + 1, head: revision + 1 },
+          historyGroup: { id: "typing-1", kind: "typing" },
+        })).toMatchObject({ kind: "accepted", candidateRevision: revision + 1 });
+      }
+
+      const grouped = controller.tabs[0];
+      if (grouped.kind !== "document") throw new Error("missing grouped document");
+      expect(grouped.candidate.text).toBe("abc");
+      expect(grouped.history.past).toHaveLength(1);
+      expect(controller.undo(tabId, 3)).toBe(true);
+      expect((controller.tabs[0] as DocumentSession).candidate.text).toBe("");
+      expect(controller.redo(tabId, 4)).toBe(true);
+      expect((controller.tabs[0] as DocumentSession).candidate.text).toBe("abc");
+    });
+
+    it("starts a new Source history group after explicit Save even when an ID is reused", async () => {
+      const fixture = hostFixture();
+      vi.mocked(fixture.host.openDocument).mockResolvedValue(payload("C:\\docs\\group-save.md", ""));
+      const controller = createDocumentController(fixture.host);
+      await controller.openPaths(["C:\\docs\\group-save.md"]);
+      const tabId = controller.activeTabId!;
+      expect(controller.setMode(tabId, 0, "source")).toBe("changed");
+      const apply = (revision: number, from: number, insert: string) => controller.applySourceChangeBatch({
+        sessionId: tabId,
+        baseCandidateRevision: revision,
+        changes: [{ from, to: from, insert }],
+        selectionAfter: { anchor: from + insert.length, head: from + insert.length },
+        historyGroup: { id: "reused-after-save", kind: "typing" },
+      });
+
+      expect(apply(0, 0, "a")).toMatchObject({ candidateRevision: 1 });
+      await controller.save(tabId);
+      expect(controller.tabs[0]).toMatchObject({ status: "clean", baseline: { text: "a" } });
+      expect(apply(1, 1, "b")).toMatchObject({ candidateRevision: 2 });
+
+      const after = controller.tabs[0] as DocumentSession;
+      expect(after.history.past).toHaveLength(2);
+      expect(controller.undo(tabId, 2)).toBe(true);
+      expect((controller.tabs[0] as DocumentSession).candidate.text).toBe("a");
+    });
+
     it("builds each current 102400-byte canonical view once and parses one accepted Source candidate once", async () => {
       const fixture = hostFixture();
       const markdown = buildSizedMarkdown(102_400);

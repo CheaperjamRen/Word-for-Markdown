@@ -153,6 +153,57 @@ describe("SourceEditor real CodeMirror integration", () => {
     });
   });
 
+  it("keeps adjacent input transactions in one generic history group and splits at 500ms", () => {
+    const onChangeBatch = vi.fn((batch: SourceChangeBatch): SourceChangeAck => ({
+      kind: "accepted",
+      candidateRevision: batch.baseCandidateRevision + 1,
+    }));
+    const rendered = render(<SourceEditor {...props({ view: sourceView(""), onChangeBatch })} />);
+    const view = editorFrom(rendered.container);
+    const type = (from: number, insert: string, at: number) => act(() => view.dispatch({
+      changes: { from, insert },
+      selection: { anchor: from + insert.length },
+      annotations: [
+        Transaction.userEvent.of("input.type"),
+        Transaction.time.of(at),
+      ],
+    }));
+
+    type(0, "a", 100);
+    type(1, "b", 599);
+    type(2, "c", 1099);
+
+    const groups = onChangeBatch.mock.calls.map(([batch]) => batch.historyGroup);
+    expect(groups[0]).toMatchObject({ kind: "typing" });
+    expect(groups[1]?.id).toBe(groups[0]?.id);
+    expect(groups[2]?.id).not.toBe(groups[1]?.id);
+  });
+
+  it("ends typing groups on selection movement and real line insertion", () => {
+    const onChangeBatch = vi.fn((batch: SourceChangeBatch): SourceChangeAck => ({
+      kind: "accepted",
+      candidateRevision: batch.baseCandidateRevision + 1,
+    }));
+    const rendered = render(<SourceEditor {...props({ view: sourceView(""), onChangeBatch })} />);
+    const view = editorFrom(rendered.container);
+    const dispatch = (from: number, insert: string, at: number) => act(() => view.dispatch({
+      changes: { from, insert },
+      selection: { anchor: from + insert.length },
+      annotations: [Transaction.userEvent.of("input.type"), Transaction.time.of(at)],
+    }));
+
+    dispatch(0, "a", 100);
+    act(() => view.dispatch({ selection: { anchor: 0 }, annotations: Transaction.userEvent.of("select.pointer") }));
+    dispatch(0, "b", 200);
+    dispatch(1, "\n", 250);
+    dispatch(2, "c", 300);
+
+    const groups = onChangeBatch.mock.calls.map(([batch]) => batch.historyGroup);
+    expect(new Set(groups.map((group) => group.id)).size).toBe(4);
+    expect(groups[2]).toMatchObject({ kind: "atomic" });
+    expect(groups[3]).toMatchObject({ kind: "typing" });
+  });
+
   it("keeps an invalid surrogate editable, uses local history to repair it, then returns to app history", async () => {
     const onUndo = vi.fn(() => true);
     const onChangeBatch = vi.fn((batch: SourceChangeBatch): SourceChangeAck => {
@@ -642,6 +693,7 @@ describe("SourceEditor real CodeMirror integration", () => {
     await waitFor(() => expect(componentProps.onChangeBatch).toHaveBeenCalledOnce());
     const batch = vi.mocked(componentProps.onChangeBatch).mock.calls.at(-1)?.[0];
     expect(batch?.selectionAfter).toEqual({ anchor: 4, head: 4 });
+    expect(batch?.historyGroup.kind).toBe("composition");
     expect(applySourceTextEditsToView("", batch?.changes ?? [])).toBe("中文😀");
   });
 

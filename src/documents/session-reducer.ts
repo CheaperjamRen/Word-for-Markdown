@@ -441,6 +441,7 @@ function applyResult(
   result: DocumentEditResult,
   clearSourceBuffer: boolean,
   selectionAfter: SelectionSnapshot | null,
+  historyMode: "append" | "merge" = "append",
 ): DocumentSession {
   const remapIsValid = hasCompleteValidBlockRemap(session, result);
   const blockViewKeys = carryBlockViewKeys(session, result, remapIsValid);
@@ -463,10 +464,9 @@ function applyResult(
         remapIsValid,
       ),
     },
-    history: {
-      past: boundedPast([...session.history.past, snapshot(session)]),
-      future: [],
-    },
+    history: historyMode === "merge"
+      ? { past: session.history.past, future: [] }
+      : { past: boundedPast([...session.history.past, snapshot(session)]), future: [] },
   };
 }
 
@@ -708,9 +708,9 @@ export function sessionReducer(
         session.mode === "source"
           ? keepPendingWriteStatus(
               state,
-              applyResult(session, action.result, false, action.selectionAfter),
+              applyResult(session, action.result, false, action.selectionAfter, action.historyMode),
             )
-          : applyResult(session, action.result, false, action.selectionAfter),
+          : applyResult(session, action.result, false, action.selectionAfter, action.historyMode),
       );
     }
 

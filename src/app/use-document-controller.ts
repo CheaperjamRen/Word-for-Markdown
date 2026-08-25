@@ -217,6 +217,7 @@ export class DocumentControllerStore implements DocumentController {
   private readonly draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly draftEpochs = new Map<string, number>();
   private readonly draftIds = new Map<string, string>();
+  private readonly sourceHistoryGroups = new Map<string, { groupId: string; nextRevision: number }>();
 
   constructor(
     private readonly host: HostApi,
@@ -463,6 +464,20 @@ export class DocumentControllerStore implements DocumentController {
     if (action.type === "close-tab") {
       const closing = this.state.tabs.find((tab): tab is DocumentSession => tab.kind === "document" && tab.id === action.tabId);
       if (closing) this.invalidateDraft(closing.id, closing.draftId);
+      this.sourceHistoryGroups.delete(action.tabId);
+    } else if (
+      action.type === "history-undo" ||
+      action.type === "history-redo" ||
+      action.type === "set-mode" ||
+      action.type === "external-reloaded" ||
+      action.type === "external-conflict" ||
+      action.type === "external-keep-local" ||
+      action.type === "external-use-disk" ||
+      action.type === "external-marked" ||
+      action.type === "source-buffer-rejected" ||
+      (action.type === "edit-applied" && action.historyMode === undefined)
+    ) {
+      this.sourceHistoryGroups.delete(action.sessionId);
     }
     let next = sessionReducer(this.state, action);
     if (next === this.state) {
@@ -801,6 +816,7 @@ export class DocumentControllerStore implements DocumentController {
     this.syncedWindowTitle = null;
     this.pendingWindowTitle = null;
     this.sourceViewCache.clear();
+    this.sourceHistoryGroups.clear();
     for (const timer of this.draftTimers.values()) clearTimeout(timer);
     this.draftTimers.clear();
     this.draftEpochs.clear();
@@ -897,6 +913,7 @@ export class DocumentControllerStore implements DocumentController {
   }
 
   async save(tabId = this.state.activeTabId ?? undefined): Promise<void> {
+    if (tabId) this.sourceHistoryGroups.delete(tabId);
     if (!tabId || this.saveAsIntents.has(tabId) || this.hasPendingWrite(tabId)) return;
     const generation = this.generation;
     const tab = this.state.tabs.find((candidate) => candidate.id === tabId);
@@ -968,6 +985,7 @@ export class DocumentControllerStore implements DocumentController {
   }
 
   async saveAs(tabId = this.state.activeTabId ?? undefined): Promise<void> {
+    if (tabId) this.sourceHistoryGroups.delete(tabId);
     if (!tabId || this.saveAsIntents.has(tabId) || this.hasPendingWrite(tabId)) return;
     const generation = this.generation;
     const beforeDialog = this.state.tabs.find((candidate) => candidate.id === tabId);
@@ -1280,6 +1298,8 @@ export class DocumentControllerStore implements DocumentController {
   }
 
   activate(tabId: string): void {
+    if (this.state.activeTabId) this.sourceHistoryGroups.delete(this.state.activeTabId);
+    this.sourceHistoryGroups.delete(tabId);
     this.dispatch({ type: "activate-tab", tabId });
   }
 
@@ -1296,6 +1316,7 @@ export class DocumentControllerStore implements DocumentController {
       (tab.sourceBuffer !== null && mode !== "source") ||
       tab.protectedRawBuffer !== null
     ) return "blocked-buffer";
+    this.sourceHistoryGroups.delete(tabId);
     this.dispatch({ type: "set-mode", sessionId: tabId, expectedRevision, mode });
     return "changed";
   }
@@ -1540,6 +1561,7 @@ export class DocumentControllerStore implements DocumentController {
     ) return { kind: "stale" };
 
     if (currentBuffer && projected === entry.view.text) {
+      this.sourceHistoryGroups.delete(tab.id);
       this.dispatch({
         type: "source-buffer-accepted",
         sessionId: tab.id,
@@ -1583,6 +1605,12 @@ export class DocumentControllerStore implements DocumentController {
     }
 
     try {
+      const previousGroup = this.sourceHistoryGroups.get(tab.id);
+      const historyMode = !currentBuffer &&
+        previousGroup?.groupId === batch.historyGroup.id &&
+        previousGroup.nextRevision === batch.baseCandidateRevision
+        ? "merge"
+        : "append";
       const result = this.sourceCore.applyDocumentEdit(tab.candidate, {
         kind: "source-changes",
         view: entry.view,
@@ -1614,6 +1642,7 @@ export class DocumentControllerStore implements DocumentController {
         expectedRevision: tab.revision,
         result,
         selectionAfter: taggedSelection,
+        historyMode,
       });
       const accepted = this.state.tabs.find((candidate) => candidate.id === tab.id);
       if (
@@ -1622,6 +1651,10 @@ export class DocumentControllerStore implements DocumentController {
         accepted.candidate !== result.candidate ||
         accepted.sourceBuffer !== null
       ) return { kind: "stale" };
+      this.sourceHistoryGroups.set(tab.id, {
+        groupId: batch.historyGroup.id,
+        nextRevision,
+      });
       this.clearMessage(`source-buffer:${tab.id}`);
       return {
         kind: "accepted",

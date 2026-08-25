@@ -206,6 +206,7 @@ export type SessionAction =
       expectedRevision: number;
       result: DocumentEditResult;
       selectionAfter: SelectionSnapshot | null;
+      historyMode?: "append" | "merge";
     }
   | { type: "history-undo"; sessionId: string; expectedRevision: number }
   | { type: "history-redo"; sessionId: string; expectedRevision: number }

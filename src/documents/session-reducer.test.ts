@@ -508,6 +508,53 @@ describe("sessionReducer async identity", () => {
     });
   });
 
+  it("merges later edits in one Source history group into the original snapshot", () => {
+    const original = makeDocumentSession("source-group", "C:\\docs\\source-group.md", "A\n", {
+      mode: "source",
+    });
+    const editB = applyDocumentEdit(original.candidate, {
+      kind: "replace-block",
+      blockId: original.candidate.blocks[0].id,
+      markdown: "B",
+    });
+    let state = sessionReducer(makeState(original), {
+      type: "edit-applied",
+      sessionId: original.id,
+      expectedRevision: 0,
+      result: editB,
+      selectionAfter: null,
+      historyMode: "append",
+    } as never);
+    const afterB = documentTab(state, original.id);
+    const editC = applyDocumentEdit(afterB.candidate, {
+      kind: "replace-block",
+      blockId: afterB.candidate.blocks[0].id,
+      markdown: "C",
+    });
+    state = sessionReducer(state, {
+      type: "edit-applied",
+      sessionId: original.id,
+      expectedRevision: 1,
+      result: editC,
+      selectionAfter: null,
+      historyMode: "merge",
+    } as never);
+
+    expect(documentTab(state, original.id).history.past).toHaveLength(1);
+    state = sessionReducer(state, {
+      type: "history-undo",
+      sessionId: original.id,
+      expectedRevision: 2,
+    });
+    expect(documentTab(state, original.id).candidate.text).toBe("A\n");
+    state = sessionReducer(state, {
+      type: "history-redo",
+      sessionId: original.id,
+      expectedRevision: 3,
+    });
+    expect(documentTab(state, original.id).candidate.text).toBe("C\n");
+  });
+
   it("keeps a branch edit C dirty against the exact saved B baseline", () => {
     const original = makeDocumentSession("one", "C:\\docs\\branch.md", "A\n");
     const editB = applyDocumentEdit(original.candidate, {

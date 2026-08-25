@@ -27,6 +27,7 @@ import {
   keymap,
   lineNumbers,
   type KeyBinding,
+  type ViewUpdate,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -36,11 +37,18 @@ import type {
   SourceBufferState,
   SourceChangeAck,
   SourceChangeBatch,
+  SourceHistoryGroup,
+  SourceHistoryKind,
   SourceSelectionRange,
   SourceViewModel,
 } from "../contracts/markdown";
 import { composePendingChanges, sourceTextEditsFromChangeSet } from "./source-change-set";
 import { markSourceEditorContent } from "./source-editor-instance";
+import {
+  continueSourceHistoryGroup,
+  type ActiveSourceHistoryGroup,
+  type SourceHistoryEdit,
+} from "./source-history-group";
 import "./source-editor.css";
 import { useLocale } from "../i18n/locale";
 import type { MessageKey } from "../i18n/messages";
@@ -68,6 +76,8 @@ interface SourceRuntime {
   baseRevision: number;
   pending: ChangeSet;
   historyGroupSequence: number;
+  activeHistoryGroup: ActiveSourceHistoryGroup | null;
+  pendingHistoryGroup: SourceHistoryGroup | null;
   rejected: boolean;
   suppress: boolean;
   destroyed: boolean;
@@ -111,6 +121,43 @@ function sourceDescribedBy(invalid: boolean): string {
   return invalid
     ? `${SOURCE_TAB_FOCUS_HINT_ID} ${SOURCE_INVALID_NOTE_ID}`
     : SOURCE_TAB_FOCUS_HINT_ID;
+}
+
+function sourceHistoryKind(userEvent: string | undefined): SourceHistoryKind {
+  if (userEvent?.startsWith("input.type.compose")) return "composition";
+  if (userEvent?.startsWith("input.type")) return "typing";
+  if (userEvent?.startsWith("delete")) return "delete";
+  return "atomic";
+}
+
+function sourceHistoryEditForUpdate(update: ViewUpdate, composing: boolean): SourceHistoryEdit {
+  let from = Number.POSITIVE_INFINITY;
+  let to = 0;
+  let hasLineBreak = false;
+  update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    from = Math.min(from, fromA);
+    to = Math.max(to, toA);
+    if (!hasLineBreak && inserted.toString().includes("\n")) hasLineBreak = true;
+  });
+  const transaction = update.transactions.at(-1);
+  const userEvent = transaction?.annotation(Transaction.userEvent);
+  const beforeHead = update.startState.selection.main.head;
+  const kind = composing ? "composition" : hasLineBreak ? "atomic" : sourceHistoryKind(userEvent);
+  const deleteDirection = userEvent?.includes(".backward")
+    ? "backward"
+    : userEvent?.includes(".forward")
+      ? "forward"
+      : null;
+  return {
+    kind,
+    at: transaction?.annotation(Transaction.time) ?? Date.now(),
+    from: Number.isFinite(from) ? from : beforeHead,
+    to: Number.isFinite(from) ? to : beforeHead,
+    beforeHead,
+    afterHead: update.state.selection.main.head,
+    hasLineBreak,
+    deleteDirection,
+  };
 }
 
 function sourceLocaleExtensions(t: SourceTranslator, editorLabel: string): Extension[] {
@@ -288,6 +335,8 @@ export function SourceEditor(props: SourceEditorProps) {
       baseRevision: props.buffer?.baseCandidateRevision ?? props.candidateRevision,
       pending: initialPending(props.buffer, baseLength),
       historyGroupSequence: 0,
+      activeHistoryGroup: null,
+      pendingHistoryGroup: null,
       rejected: props.buffer !== null,
       suppress: false,
       destroyed: false,
@@ -307,6 +356,8 @@ export function SourceEditor(props: SourceEditorProps) {
     const zoomCompartment = zoomCompartmentRef.current;
     const readOnlyCompartment = readOnlyCompartmentRef.current;
     let view!: EditorView;
+    const nextHistoryGroupId = () => `${runtime.sessionId}:source:${runtime.historyGroupSequence++}`;
+    const endHistoryGroup = () => { runtime.activeHistoryGroup = null; };
 
     const applicationKeymap = [
       {
@@ -319,6 +370,7 @@ export function SourceEditor(props: SourceEditorProps) {
             event.key.toLowerCase() !== "s"
           ) return false;
           event.preventDefault();
+          endHistoryGroup();
           propsRef.current.onSave();
           return true;
         },
@@ -328,6 +380,7 @@ export function SourceEditor(props: SourceEditorProps) {
         scope: "editor search-panel",
         preventDefault: true,
         run: () => {
+          endHistoryGroup();
           if (runtime.rejected) undo(view);
           else propsRef.current.onUndo(runtime.baseRevision);
           return true;
@@ -338,6 +391,7 @@ export function SourceEditor(props: SourceEditorProps) {
         scope: "editor search-panel",
         preventDefault: true,
         run: () => {
+          endHistoryGroup();
           if (runtime.rejected) redo(view);
           else propsRef.current.onRedo(runtime.baseRevision);
           return true;
@@ -349,20 +403,22 @@ export function SourceEditor(props: SourceEditorProps) {
       if (!runtime.pendingSubmission || runtime.destroyed) return;
       runtime.pendingSubmission = false;
       const main = view.state.selection.main;
+      const historyGroup = runtime.pendingHistoryGroup ?? {
+        id: nextHistoryGroupId(),
+        kind: "atomic" as const,
+      };
       const batch: SourceChangeBatch = {
         sessionId: runtime.sessionId,
         baseCandidateRevision: runtime.baseRevision,
         changes: sourceTextEditsFromChangeSet(runtime.pending).map((change) => ({ ...change })),
         selectionAfter: { anchor: main.anchor, head: main.head },
-        historyGroup: {
-          id: `${runtime.sessionId}:source:${runtime.historyGroupSequence++}`,
-          kind: "atomic",
-        },
+        historyGroup,
       };
       const ack = propsRef.current.onChangeBatch(batch);
       if (ack.kind === "accepted") {
         runtime.baseRevision = ack.candidateRevision;
         runtime.pending = ChangeSet.empty(view.state.doc.length);
+        runtime.pendingHistoryGroup = null;
         runtime.rejected = false;
         view.contentDOM.setAttribute("aria-invalid", "false");
         view.contentDOM.setAttribute("aria-describedby", sourceDescribedBy(false));
@@ -419,7 +475,12 @@ export function SourceEditor(props: SourceEditorProps) {
           EditorView.editable.of(!props.readOnly),
         ]),
         EditorView.domEventHandlers({
+          blur() {
+            endHistoryGroup();
+            return false;
+          },
           compositionstart() {
+            endHistoryGroup();
             runtime.composing = true;
             return false;
           },
@@ -456,10 +517,21 @@ export function SourceEditor(props: SourceEditorProps) {
         EditorView.updateListener.of((update) => {
           if (runtime.suppress || runtime.destroyed) return;
           if (update.docChanged) {
+            const historyEdit = sourceHistoryEditForUpdate(
+              update,
+              runtime.composing || view.compositionStarted || view.composing,
+            );
+            runtime.activeHistoryGroup = continueSourceHistoryGroup(
+              runtime.activeHistoryGroup,
+              historyEdit,
+              nextHistoryGroupId,
+            );
+            runtime.pendingHistoryGroup = runtime.activeHistoryGroup.group;
             runtime.pending = composePendingChanges(runtime.pending, update.changes);
             runtime.pendingSubmission = true;
             if (!runtime.composing && !view.compositionStarted && !view.composing) submitPending();
           } else if (update.selectionSet) {
+            endHistoryGroup();
             const main = update.state.selection.main;
             propsRef.current.onSelectionChange(runtime.baseRevision, {
               anchor: main.anchor,
@@ -543,6 +615,8 @@ export function SourceEditor(props: SourceEditorProps) {
           docChanged
         )
       ) {
+        runtime.activeHistoryGroup = null;
+        runtime.pendingHistoryGroup = null;
         runtime.baseRevision = targetRevision;
         runtime.pending = initialPending(props.buffer, targetBaseLength);
         runtime.pendingSubmission = false;

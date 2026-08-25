@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { EditorView } from "@codemirror/view";
+import { Transaction } from "@codemirror/state";
 
 import type { FileVersion, HostApi, HostOpenDocument } from "../contracts/desktop";
 import App from "./App";
@@ -449,5 +450,39 @@ describe("desktop document shell", () => {
     await user.keyboard("{Control>}s{/Control}");
     await waitFor(() => expect(host.saveDocument).toHaveBeenCalledOnce());
     expect(rendered.container.querySelector(".cm-editor")).toBeNull();
+  });
+
+  it("undoes and redoes one continuous Source typing group in one step", async () => {
+    const user = userEvent.setup();
+    const { host } = testHost(["C:\\docs\\first.md"]);
+    render(<App host={host} />);
+    await screen.findByRole("heading", { name: "第一篇" });
+    await user.click(screen.getByRole("button", { name: "源码" }));
+    const textbox = await screen.findByRole("textbox", { name: "Markdown 源码编辑器" });
+    const view = EditorView.findFromDOM(textbox)!;
+    const before = view.state.doc.toString();
+
+    for (const [index, character] of [..."hello"].entries()) {
+      const from = before.length + index;
+      act(() => view.dispatch({
+        changes: { from, insert: character },
+        selection: { anchor: from + 1 },
+        annotations: [
+          Transaction.userEvent.of("input.type"),
+          Transaction.time.of(100 + index * 50),
+        ],
+      }));
+    }
+    expect(view.state.doc.toString()).toBe(`${before}hello`);
+
+    textbox.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, ctrlKey: true, key: "z",
+    }));
+    await waitFor(() => expect(view.state.doc.toString()).toBe(before));
+
+    textbox.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, ctrlKey: true, key: "y",
+    }));
+    await waitFor(() => expect(view.state.doc.toString()).toBe(`${before}hello`));
   });
 });
