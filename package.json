@@ -17,8 +17,10 @@
     "icons:generate": "node scripts/generate-icons.mjs",
     "icons:contact-sheet": "node scripts/write-icon-contact-sheet.mjs",
     "icons:test": "node --test scripts/icon-assets.node-test.mjs",
-    "verify": "npm test && npm run icons:test && npm run build && cargo test --locked --manifest-path src-tauri/Cargo.toml",
-    "fixtures:generate": "node scripts/create-test-fixtures.mjs"
+    "verify": "npm test && npm run icons:test && npm run source:qa-fixtures:test && npm run build && cargo test --locked --manifest-path src-tauri/Cargo.toml",
+    "fixtures:generate": "node scripts/create-test-fixtures.mjs",
+    "source:qa-fixtures": "node scripts/create-source-editor-qa-fixtures.mjs",
+    "source:qa-fixtures:test": "node --test scripts/create-source-editor-qa-fixtures.node-test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.0",

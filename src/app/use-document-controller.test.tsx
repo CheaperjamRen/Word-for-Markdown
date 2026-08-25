@@ -1581,6 +1581,8 @@ describe("document controller", () => {
       expect(Buffer.byteLength(accepted.candidate.text)).toBe(102_400);
       expect(accepted.candidate.text).toBe(expectedText);
       expect(accepted.history.past).toHaveLength(1);
+      expect(Object.keys(batch)).not.toContain("baseView");
+      expect(Object.keys(batch)).not.toContain("bufferText");
       expect(sourceController.getSourceView(tabId, 1)).not.toBeNull();
       expect(build).toHaveBeenCalledTimes(2);
       sourceController.updateSourceSelection(tabId, 1, null);
@@ -1588,6 +1590,7 @@ describe("document controller", () => {
       expect(build).toHaveBeenCalledTimes(2);
       expect(parse).toHaveBeenCalledOnce();
 
+      parse.mockClear();
       let revision = 1;
       for (let index = 0; index < 52; index += 1) {
         const currentView = sourceController.getSourceView(tabId, revision)!;
@@ -1597,19 +1600,20 @@ describe("document controller", () => {
           baseCandidateRevision: revision,
           changes: [{ from: currentView.text.length, to: currentView.text.length, insert: "x" }],
           selectionAfter: { anchor: next.length, head: next.length },
-          historyGroup: { id: `large-${index}`, kind: "atomic" },
+          historyGroup: { id: "large-continuous", kind: "typing" },
         })).toMatchObject({ kind: "accepted", candidateRevision: revision + 1 });
         revision += 1;
       }
       const afterHistory = controller.tabs[0];
       if (afterHistory.kind !== "document") throw new Error("missing Source document");
       expect(afterHistory.revision).toBe(53);
-      expect(afterHistory.history.past.length + afterHistory.history.future.length).toBe(50);
+      expect(afterHistory.history.past).toHaveLength(2);
+      expect(afterHistory.history.future).toHaveLength(0);
       expect(afterHistory.history.past.every((entry) => !("view" in entry))).toBe(true);
       expect((cache as unknown as { entries: Map<string, unknown> }).entries.size).toBe(1);
       expect(sourceController.getSourceView(tabId, 53)).not.toBeNull();
       expect(build).toHaveBeenCalledTimes(54);
-      expect(parse).toHaveBeenCalledTimes(53);
+      expect(parse).toHaveBeenCalledTimes(52);
     }, 30_000);
 
     it("deduplicates native title IPC across Source mode, selection, and viewport dispatches", async () => {

@@ -5,3 +5,4 @@ src-tauri/gen/schemas/
 fixtures/generated/
 *.log
 .worktrees/
+.tmp/
