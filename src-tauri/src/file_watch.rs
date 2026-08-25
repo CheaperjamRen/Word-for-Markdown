@@ -95,6 +95,14 @@ impl EventClassifier {
                 if !same_path(&from, &self.watched) {
                     return vec![];
                 }
+                if is_internal_replaced_backup(&self.watched, to) {
+                    return vec![FileChangedEvent {
+                        watch_id: self.watch_id.clone(),
+                        canonical_path: self.watched.to_string_lossy().into_owned(),
+                        kind: FileChangedKind::Content,
+                        new_canonical_path: None,
+                    }];
+                }
                 vec![FileChangedEvent {
                     watch_id: self.watch_id.clone(),
                     canonical_path: self.watched.to_string_lossy().into_owned(),
@@ -202,6 +210,14 @@ pub fn classify_event(watch_id: &str, watched: &Path, event: &Event) -> Vec<File
     let canonical_path = watched.to_string_lossy().into_owned();
     if let EventKind::Modify(ModifyKind::Name(RenameMode::Both)) = event.kind {
         if event.paths.len() >= 2 && same_path(&event.paths[0], watched) {
+            if is_internal_replaced_backup(watched, &event.paths[1]) {
+                return vec![FileChangedEvent {
+                    watch_id: watch_id.to_owned(),
+                    canonical_path,
+                    kind: FileChangedKind::Content,
+                    new_canonical_path: None,
+                }];
+            }
             return vec![FileChangedEvent {
                 watch_id: watch_id.to_owned(),
                 canonical_path,
@@ -239,6 +255,26 @@ fn same_path(left: &Path, right: &Path) -> bool {
     {
         left == right
     }
+}
+
+fn is_internal_replaced_backup(watched: &Path, renamed: &Path) -> bool {
+    let (Some(watched_parent), Some(renamed_parent), Some(file_name)) = (
+        watched.parent(),
+        renamed.parent(),
+        renamed.file_name().and_then(|name| name.to_str()),
+    ) else {
+        return false;
+    };
+    if !same_path(watched_parent, renamed_parent) {
+        return false;
+    }
+    let Some(id) = file_name
+        .strip_prefix(".markdown-spike-")
+        .and_then(|value| value.strip_suffix(".replaced-backup"))
+    else {
+        return false;
+    };
+    id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn display_path(path: &Path) -> String {

@@ -1285,6 +1285,32 @@ fn file_watch_pairs_the_from_to_sequence_emitted_by_windows_notify() {
 }
 
 #[test]
+fn file_watch_rechecks_content_when_atomic_save_moves_the_old_file_to_its_internal_backup() {
+    let original = std::path::PathBuf::from(r"C:\docs\a.md");
+    let backup = std::path::PathBuf::from(
+        r"C:\docs\.markdown-spike-0123456789abcdef0123456789abcdef.replaced-backup",
+    );
+
+    let both = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both)))
+        .add_path(original.clone())
+        .add_path(backup.clone());
+    let both_facts = classify_event("watch-both", &original, &both);
+    assert_eq!(both_facts.len(), 1);
+    assert_eq!(both_facts[0].kind, FileChangedKind::Content);
+    assert_eq!(both_facts[0].new_canonical_path, None);
+
+    let mut classifier = EventClassifier::new("watch-split", original.clone());
+    let from = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)))
+        .add_path(original.clone());
+    let to = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To))).add_path(backup);
+    assert!(classifier.classify(&from).is_empty());
+    let split_facts = classifier.classify(&to);
+    assert_eq!(split_facts.len(), 1);
+    assert_eq!(split_facts[0].kind, FileChangedKind::Content);
+    assert_eq!(split_facts[0].new_canonical_path, None);
+}
+
+#[test]
 fn file_watch_real_temp_lifecycle_stops_after_deterministic_unwatch() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("watched.md");
