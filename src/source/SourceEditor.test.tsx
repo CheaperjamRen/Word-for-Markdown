@@ -628,6 +628,76 @@ describe("SourceEditor real CodeMirror integration", () => {
     expect(componentProps.onViewportOffsetChange).not.toHaveBeenCalled();
   });
 
+  it("coalesces Source scrolling by frame, reports the top visual character, and flushes before cleanup", () => {
+    let nextFrame = 0;
+    const callbacks = new Map<number, FrameRequestCallback>();
+    const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      const id = ++nextFrame;
+      callbacks.set(id, callback);
+      return id;
+    });
+    const cancelAnimationFrame = vi.fn((id: number) => { callbacks.delete(id); });
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame);
+    const componentProps = props({
+      view: sourceView(`${"wrapped ".repeat(100)}\nnext`),
+      onViewportOffsetChange: vi.fn(),
+    });
+    const rendered = render(<SourceEditor {...componentProps} />);
+    const view = editorFrom(rendered.container);
+    vi.spyOn(view, "posAtCoords").mockReturnValue(42);
+    callbacks.clear();
+    nextFrame = 0;
+    requestAnimationFrame.mockClear();
+    cancelAnimationFrame.mockClear();
+
+    view.scrollDOM.dispatchEvent(new Event("scroll"));
+    view.scrollDOM.dispatchEvent(new Event("scroll"));
+    view.scrollDOM.dispatchEvent(new Event("scroll"));
+
+    expect(requestAnimationFrame).toHaveBeenCalledOnce();
+    expect(componentProps.onViewportOffsetChange).not.toHaveBeenCalled();
+    const first = callbacks.get(1)!;
+    callbacks.delete(1);
+    act(() => first(16));
+    expect(componentProps.onViewportOffsetChange).toHaveBeenCalledOnce();
+    expect(componentProps.onViewportOffsetChange).toHaveBeenLastCalledWith(0, 42);
+
+    view.scrollDOM.dispatchEvent(new Event("scroll"));
+    const stale = callbacks.get(2)!;
+    rendered.unmount();
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(2);
+    expect(componentProps.onViewportOffsetChange).toHaveBeenCalledTimes(2);
+    act(() => stale(32));
+    expect(componentProps.onViewportOffsetChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-anchors the same top Source character after zoom geometry changes", () => {
+    const componentProps = props({
+      view: sourceView(`${"wrapped ".repeat(100)}\nnext`),
+      zoomPercent: 100,
+    });
+    const rendered = render(<SourceEditor {...componentProps} />);
+    const view = editorFrom(rendered.container);
+    vi.spyOn(view, "posAtCoords").mockReturnValue(42);
+    const requestMeasure = vi.spyOn(view, "requestMeasure");
+    const scrollIntoView = vi.spyOn(EditorView, "scrollIntoView");
+
+    rendered.rerender(<SourceEditor {...componentProps} zoomPercent={150} />);
+
+    const request = requestMeasure.mock.calls
+      .map(([value]) => value)
+      .find((value) => value && typeof value === "object" && "key" in value && "read" in value && "write" in value);
+    expect(request).toEqual(expect.objectContaining({
+      key: expect.anything(),
+      read: expect.any(Function),
+      write: expect.any(Function),
+    }));
+    const offset = request!.read(view);
+    act(() => request!.write?.(offset, view));
+    expect(scrollIntoView).toHaveBeenCalledWith(42, { y: "start" });
+  });
+
   it("keeps the same EditorView and bridge without reconfigure, measure, or scroll rollback on state echoes", () => {
     const unregister = vi.fn();
     const registerBridge = vi.fn(() => unregister);

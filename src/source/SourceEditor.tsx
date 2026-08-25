@@ -104,6 +104,7 @@ type SourceTranslator = (key: MessageKey) => string;
 
 const SOURCE_TAB_FOCUS_HINT_ID = "source-editor-tab-focus-hint";
 const SOURCE_INVALID_NOTE_ID = "source-editor-invalid-note";
+const sourceZoomAnchorMeasureKey = {};
 const unsupportedMultipleSelectionKeys = new Set([
   "Mod-d",
   "Mod-Shift-l",
@@ -301,10 +302,19 @@ function resetCodeMirrorHistory(view: EditorView, compartment: Compartment): voi
   });
 }
 
-function currentViewportOffset(view: EditorView): number {
-  const top = view.scrollDOM.getBoundingClientRect().top;
-  const relativeHeight = Math.max(0, (top - view.documentTop) / Math.max(view.scaleY, 0.0001));
-  return view.lineBlockAtHeight(relativeHeight).from;
+export function sourceViewportOffsetAtTop(view: EditorView): number {
+  let offset = view.viewport.from;
+  try {
+    const scroller = view.scrollDOM.getBoundingClientRect();
+    const content = view.contentDOM.getBoundingClientRect();
+    offset = view.posAtCoords({
+      x: Math.max(scroller.left + 1, content.left + 1),
+      y: scroller.top + 1,
+    }, false) ?? offset;
+  } catch {
+    // CodeMirror's visible viewport remains a safe fallback while geometry is unavailable.
+  }
+  return Math.min(view.state.doc.length, Math.max(0, offset));
 }
 
 export function SourceEditor(props: SourceEditorProps) {
@@ -551,9 +561,25 @@ export function SourceEditor(props: SourceEditorProps) {
     view.contentDOM.setAttribute("aria-invalid", runtime.rejected ? "true" : "false");
     view.contentDOM.setAttribute("aria-describedby", sourceDescribedBy(runtime.rejected));
 
-    const reportViewport = () => {
+    let viewportFrame: number | null = null;
+    const publishViewport = () => {
       if (runtime.suppress || runtime.destroyed) return;
-      propsRef.current.onViewportOffsetChange(runtime.baseRevision, currentViewportOffset(view));
+      propsRef.current.onViewportOffsetChange(runtime.baseRevision, sourceViewportOffsetAtTop(view));
+    };
+    const reportViewport = () => {
+      if (runtime.suppress || runtime.destroyed || viewportFrame !== null) return;
+      const scheduledFrame = requestAnimationFrame(() => {
+        if (viewportFrame !== scheduledFrame) return;
+        viewportFrame = null;
+        publishViewport();
+      });
+      viewportFrame = scheduledFrame;
+    };
+    const flushViewport = () => {
+      if (viewportFrame === null) return;
+      cancelAnimationFrame(viewportFrame);
+      viewportFrame = null;
+      publishViewport();
     };
     view.scrollDOM.addEventListener("scroll", reportViewport, { passive: true });
     if (props.initialViewportOffset !== null) {
@@ -567,8 +593,9 @@ export function SourceEditor(props: SourceEditorProps) {
     }
 
     return () => {
-      runtime.destroyed = true;
+      flushViewport();
       view.scrollDOM.removeEventListener("scroll", reportViewport);
+      runtime.destroyed = true;
       bridgeCleanupRef.current?.();
       bridgeCleanupRef.current = null;
       liveMountTokenRef.current = null;
@@ -661,6 +688,7 @@ export function SourceEditor(props: SourceEditorProps) {
       runtime.destroyed ||
       appliedZoomRef.current === props.zoomPercent
     ) return;
+    const anchorOffset = sourceViewportOffsetAtTop(view);
     appliedZoomRef.current = props.zoomPercent;
     runtime.suppress = true;
     view.dispatch({
@@ -668,7 +696,17 @@ export function SourceEditor(props: SourceEditorProps) {
       annotations: Transaction.addToHistory.of(false),
     });
     runtime.suppress = false;
-    view.requestMeasure();
+    view.requestMeasure({
+      key: sourceZoomAnchorMeasureKey,
+      read: () => anchorOffset,
+      write: (offset) => {
+        if (runtime.destroyed || editorRef.current !== view) return;
+        view.dispatch({
+          effects: EditorView.scrollIntoView(offset, { y: "start" }),
+          annotations: Transaction.addToHistory.of(false),
+        });
+      },
+    });
   }, [props.zoomPercent]);
 
   useLayoutEffect(() => {

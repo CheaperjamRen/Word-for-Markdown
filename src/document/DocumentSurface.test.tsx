@@ -590,11 +590,11 @@ describe("DocumentSurface mode ownership", () => {
 
     fireEvent.scroll(rendered.container.querySelector(".cm-scroller")!);
 
-    expect(surfaceController.updateSourceViewport).toHaveBeenCalledWith(
+    await waitFor(() => expect(surfaceController.updateSourceViewport).toHaveBeenCalledWith(
       tab.id,
       tab.revision,
       { blockViewKey: null, offset: 0 },
-    );
+    ));
     expect(mutableTabs[0].viewState.scrollAnchor).toEqual({ blockViewKey: null, offset: 0 });
   });
 
@@ -636,7 +636,7 @@ describe("DocumentSurface mode ownership", () => {
     fireEvent.scroll(view.scrollDOM);
 
     expect(surfaceController.updateSourceSelection).toHaveBeenCalledOnce();
-    expect(surfaceController.updateSourceViewport).toHaveBeenCalledOnce();
+    await waitFor(() => expect(surfaceController.updateSourceViewport).toHaveBeenCalledOnce());
     expect(surfaceController.getSourceView).not.toHaveBeenCalled();
   });
 
@@ -680,11 +680,11 @@ describe("DocumentSurface mode ownership", () => {
       1,
       expect.objectContaining({ kind: "text" }),
     );
-    expect(surfaceController.updateSourceViewport).toHaveBeenCalledWith(
+    await waitFor(() => expect(surfaceController.updateSourceViewport).toHaveBeenCalledWith(
       tab.id,
       1,
       expect.objectContaining({ offset: expect.any(Number) }),
-    );
+    ));
     expect(surfaceController.getSourceView).toHaveBeenCalledTimes(2);
   });
 
