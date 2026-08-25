@@ -1517,7 +1517,6 @@ export class DocumentControllerStore implements DocumentController {
     ) return { kind: "stale" };
 
     const entry = this.sourceViewCache.getOrBuild(tab.id, tab.revision, tab.candidate);
-    if (!sourceViewsEqual(entry.view, batch.baseView)) return { kind: "stale" };
 
     const changes = batch.changes.map((change) => ({ ...change }));
     const selectionAfter = { ...batch.selectionAfter };
@@ -1525,7 +1524,6 @@ export class DocumentControllerStore implements DocumentController {
     let absoluteSelection: Extract<SelectionSnapshot, { kind: "text" }>;
     try {
       projected = applySourceTextEditsToView(entry.view.text, changes);
-      if (projected !== batch.bufferText) return { kind: "stale" };
       absoluteSelection = textSelectionForSourceRange(selectionAfter, [], projected);
     } catch {
       return { kind: "stale" };
@@ -1561,7 +1559,6 @@ export class DocumentControllerStore implements DocumentController {
       return {
         kind: "accepted",
         candidateRevision: tab.revision,
-        view: cloneSourceView(entry.view),
       };
     }
 
@@ -1582,7 +1579,6 @@ export class DocumentControllerStore implements DocumentController {
       return {
         kind: "accepted",
         candidateRevision: tab.revision,
-        view: cloneSourceView(entry.view),
       };
     }
 
@@ -1630,7 +1626,6 @@ export class DocumentControllerStore implements DocumentController {
       return {
         kind: "accepted",
         candidateRevision: nextRevision,
-        view: cloneSourceView(nextEntry.view),
       };
     } catch {
       const buffer = {

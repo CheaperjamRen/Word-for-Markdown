@@ -46,17 +46,23 @@ export interface SourceSelectionRange {
   head: number;
 }
 
+export type SourceHistoryKind = "typing" | "delete" | "composition" | "atomic";
+
+export interface SourceHistoryGroup {
+  id: string;
+  kind: SourceHistoryKind;
+}
+
 export interface SourceChangeBatch {
   sessionId: string;
   baseCandidateRevision: number;
-  baseView: SourceViewModel;
   changes: readonly SourceTextEdit[];
-  bufferText: string;
   selectionAfter: SourceSelectionRange;
+  historyGroup: SourceHistoryGroup;
 }
 
 export type SourceChangeAck =
-  | { kind: "accepted"; candidateRevision: number; view: SourceViewModel }
+  | { kind: "accepted"; candidateRevision: number }
   | { kind: "rejected"; validationError: string }
   | { kind: "stale" };
 

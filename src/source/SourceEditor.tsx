@@ -39,7 +39,6 @@ import type {
   SourceSelectionRange,
   SourceViewModel,
 } from "../contracts/markdown";
-import { cloneSourceView } from "../markdown/source-view";
 import { composePendingChanges, sourceTextEditsFromChangeSet } from "./source-change-set";
 import { markSourceEditorContent } from "./source-editor-instance";
 import "./source-editor.css";
@@ -67,8 +66,8 @@ export interface SourceEditorProps {
 interface SourceRuntime {
   sessionId: string;
   baseRevision: number;
-  baseView: SourceViewModel;
   pending: ChangeSet;
+  historyGroupSequence: number;
   rejected: boolean;
   suppress: boolean;
   destroyed: boolean;
@@ -282,13 +281,13 @@ export function SourceEditor(props: SourceEditorProps) {
   useLayoutEffect(() => {
     const parent = hostRef.current;
     if (!parent) return;
-    const baseView = cloneSourceView(props.view);
-    const initialText = props.buffer?.bufferText ?? baseView.text;
+    const baseLength = props.buffer?.baseView.text.length ?? props.view.text.length;
+    const initialText = props.buffer?.bufferText ?? props.view.text;
     const runtime: SourceRuntime = {
       sessionId: props.sessionId,
       baseRevision: props.buffer?.baseCandidateRevision ?? props.candidateRevision,
-      baseView: props.buffer ? cloneSourceView(props.buffer.baseView) : baseView,
-      pending: initialPending(props.buffer, baseView.text.length),
+      pending: initialPending(props.buffer, baseLength),
+      historyGroupSequence: 0,
       rejected: props.buffer !== null,
       suppress: false,
       destroyed: false,
@@ -353,16 +352,17 @@ export function SourceEditor(props: SourceEditorProps) {
       const batch: SourceChangeBatch = {
         sessionId: runtime.sessionId,
         baseCandidateRevision: runtime.baseRevision,
-        baseView: cloneSourceView(runtime.baseView),
         changes: sourceTextEditsFromChangeSet(runtime.pending).map((change) => ({ ...change })),
-        bufferText: view.state.doc.toString(),
         selectionAfter: { anchor: main.anchor, head: main.head },
+        historyGroup: {
+          id: `${runtime.sessionId}:source:${runtime.historyGroupSequence++}`,
+          kind: "atomic",
+        },
       };
       const ack = propsRef.current.onChangeBatch(batch);
       if (ack.kind === "accepted") {
         runtime.baseRevision = ack.candidateRevision;
-        runtime.baseView = cloneSourceView(ack.view);
-        runtime.pending = ChangeSet.empty(ack.view.text.length);
+        runtime.pending = ChangeSet.empty(view.state.doc.length);
         runtime.rejected = false;
         view.contentDOM.setAttribute("aria-invalid", "false");
         view.contentDOM.setAttribute("aria-describedby", sourceDescribedBy(false));
@@ -512,7 +512,7 @@ export function SourceEditor(props: SourceEditorProps) {
     const runtime = runtimeRef.current;
     if (!view || !runtime || runtime.destroyed) return;
     const targetText = props.buffer?.bufferText ?? props.view.text;
-    const targetBase = props.buffer?.baseView ?? props.view;
+    const targetBaseLength = props.buffer?.baseView.text.length ?? props.view.text.length;
     const targetRevision = props.buffer?.baseCandidateRevision ?? props.candidateRevision;
     const targetRejected = props.buffer !== null;
     const externalDocumentChanged =
@@ -539,14 +539,12 @@ export function SourceEditor(props: SourceEditorProps) {
       if (
         externalDocumentChanged && (
           runtime.baseRevision !== targetRevision ||
-          runtime.baseView.text !== targetBase.text ||
           runtime.rejected !== targetRejected ||
           docChanged
         )
       ) {
         runtime.baseRevision = targetRevision;
-        runtime.baseView = cloneSourceView(targetBase);
-        runtime.pending = initialPending(props.buffer, targetBase.text.length);
+        runtime.pending = initialPending(props.buffer, targetBaseLength);
         runtime.pendingSubmission = false;
         runtime.pendingHistoryIsolation = false;
         runtime.rejected = targetRejected;

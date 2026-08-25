@@ -255,7 +255,22 @@ describe("Source editor dependency and lazy architecture", () => {
     for (const name of ["SourceSelectionRange", "SourceChangeBatch", "SourceChangeAck"]) {
       expect(declarations.get(name)).toEqual([resolve(sourceRoot, "contracts/markdown.ts")]);
     }
-    expect(readFileSync(resolve(sourceRoot, "contracts/markdown.ts"), "utf8")).not.toMatch(/@codemirror|@lezer/);
+    const contractPath = resolve(sourceRoot, "contracts/markdown.ts");
+    const contractSource = parse(contractPath);
+    const batch = contractSource.statements.find((statement): statement is ts.InterfaceDeclaration =>
+      ts.isInterfaceDeclaration(statement) && statement.name.text === "SourceChangeBatch",
+    );
+    expect(batch?.members.map((member) => member.name?.getText()).sort()).toEqual([
+      "baseCandidateRevision",
+      "changes",
+      "historyGroup",
+      "selectionAfter",
+      "sessionId",
+    ]);
+    const contractText = readFileSync(contractPath, "utf8");
+    expect(contractText).not.toMatch(/@codemirror|@lezer/);
+    expect(contractText.match(/export interface SourceHistoryGroup\b/g)).toHaveLength(1);
+    expect(contractText).toMatch(/kind:\s*SourceHistoryKind/);
     expect(sourceViewDefinitions).toEqual([resolve(sourceRoot, "markdown/source-view.ts")]);
     expect(forbiddenPressed).toEqual([]);
     expect(forbiddenZoomMutators).toEqual([]);

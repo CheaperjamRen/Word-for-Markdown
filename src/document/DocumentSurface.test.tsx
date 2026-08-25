@@ -11,7 +11,7 @@ import type { HostApi } from "../contracts/desktop";
 import type { DocumentSession } from "../documents/session";
 import { sessionReducer } from "../documents/session-reducer";
 import { parseSourceDocument } from "../markdown/source-document";
-import { buildBlockViewSpans, buildSourceView } from "../markdown/source-view";
+import { applySourceTextEditsToView, buildBlockViewSpans, buildSourceView } from "../markdown/source-view";
 import { FirstReadablePreview } from "../markdown/render/FirstReadablePreview";
 import { MarkdownView } from "../markdown/render/MarkdownView";
 import { createActiveSourceEditorRegistry } from "../app/active-source-editor";
@@ -429,9 +429,10 @@ describe("DocumentSurface mode ownership", () => {
       const replace = (revision: number, text: string) => {
         const source = surfaceController.getSourceView(tabId, revision)!;
         return surfaceController.applySourceChangeBatch({
-          sessionId: tabId, baseCandidateRevision: revision, baseView: source,
+          sessionId: tabId, baseCandidateRevision: revision,
           changes: [{ from: 0, to: source.text.length, insert: text }],
-          bufferText: text, selectionAfter: { anchor: text.length, head: text.length },
+          selectionAfter: { anchor: text.length, head: text.length },
+          historyGroup: { id: `surface-${revision}`, kind: "atomic" },
         });
       };
       expect(replace(0, "B\n")).toMatchObject({ candidateRevision: 1 });
@@ -648,7 +649,9 @@ describe("DocumentSurface mode ownership", () => {
       return current && current.revision === revision ? buildSourceView(current.candidate) : null;
     });
     vi.mocked(surfaceController.applySourceChangeBatch).mockImplementation((batch) => {
-      const candidate = parseSourceDocument(new Uint8Array(encoder.encode(batch.bufferText)));
+      const current = mutableTabs[0];
+      const text = applySourceTextEditsToView(buildSourceView(current.candidate).text, batch.changes);
+      const candidate = parseSourceDocument(new Uint8Array(encoder.encode(text)));
       mutableTabs[0] = {
         ...mutableTabs[0],
         candidate,
@@ -656,7 +659,7 @@ describe("DocumentSurface mode ownership", () => {
         status: "dirty",
         blockViewKeys: new Map(candidate.blocks.map((block, index) => [block.id, `next-${index}`])),
       };
-      return { kind: "accepted", candidateRevision: 1, view: buildSourceView(candidate) };
+      return { kind: "accepted", candidateRevision: 1 };
     });
     const rendered = render(<DocumentSurface
       controller={surfaceController}

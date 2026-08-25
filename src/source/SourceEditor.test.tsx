@@ -16,6 +16,7 @@ import type {
   SourceViewModel,
 } from "../contracts/markdown";
 import type { SourceEditorBridge } from "../app/active-source-editor";
+import { applySourceTextEditsToView } from "../markdown/source-view";
 import { SourceEditor } from "./SourceEditor";
 
 function deferred<T>() {
@@ -44,6 +45,7 @@ function editorFrom(container: HTMLElement): EditorView {
 }
 
 function props(overrides: Partial<React.ComponentProps<typeof SourceEditor>> = {}) {
+  let acceptedText = overrides.buffer?.baseView.text ?? overrides.view?.text ?? "A";
   return {
     sessionId: "one",
     candidateRevision: 0,
@@ -53,11 +55,13 @@ function props(overrides: Partial<React.ComponentProps<typeof SourceEditor>> = {
     zoomPercent: 100,
     initialSelection: { anchor: 0, head: 0 },
     initialViewportOffset: null,
-    onChangeBatch: vi.fn((batch: SourceChangeBatch): SourceChangeAck => ({
-      kind: "accepted",
-      candidateRevision: batch.baseCandidateRevision + 1,
-      view: sourceView(batch.bufferText),
-    })),
+    onChangeBatch: vi.fn((batch: SourceChangeBatch): SourceChangeAck => {
+      acceptedText = applySourceTextEditsToView(acceptedText, batch.changes);
+      return {
+        kind: "accepted",
+        candidateRevision: batch.baseCandidateRevision + 1,
+      };
+    }),
     onSelectionChange: vi.fn(),
     onViewportOffsetChange: vi.fn(),
     onUndo: vi.fn(() => false),
@@ -115,26 +119,50 @@ describe("SourceEditor real CodeMirror integration", () => {
     act(() => view.dispatch({ changes: { from: 2, insert: "C" } }));
 
     expect(componentProps.onChangeBatch).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(componentProps.onChangeBatch).mock.calls.map(([batch]) => ({
-      base: batch.baseCandidateRevision,
-      text: batch.bufferText,
-    }))).toEqual([
+    let projected = "A";
+    expect(vi.mocked(componentProps.onChangeBatch).mock.calls.map(([batch]) => {
+      projected = applySourceTextEditsToView(projected, batch.changes);
+      return { base: batch.baseCandidateRevision, text: projected };
+    })).toEqual([
       { base: 0, text: "AB" },
       { base: 1, text: "ABC" },
     ]);
     expect(rendered.container.querySelectorAll(".cm-editor")).toHaveLength(1);
   });
 
+  it("submits only revision-bound incremental Source data", () => {
+    const onChangeBatch = vi.fn((_batch: SourceChangeBatch): SourceChangeAck => ({ kind: "stale" }));
+    const rendered = render(<SourceEditor {...props({ onChangeBatch })} />);
+    const view = editorFrom(rendered.container);
+
+    act(() => view.dispatch({ changes: { from: 1, insert: "B" } }));
+
+    const batch = onChangeBatch.mock.calls[0]![0] as unknown as SourceChangeBatch & Record<string, unknown>;
+    expect(Object.keys(batch).sort()).toEqual([
+      "baseCandidateRevision",
+      "changes",
+      "historyGroup",
+      "selectionAfter",
+      "sessionId",
+    ]);
+    expect(batch).not.toHaveProperty("baseView");
+    expect(batch).not.toHaveProperty("bufferText");
+    expect(batch.historyGroup).toEqual({
+      id: expect.any(String),
+      kind: "atomic",
+    });
+  });
+
   it("keeps an invalid surrogate editable, uses local history to repair it, then returns to app history", async () => {
     const onUndo = vi.fn(() => true);
     const onChangeBatch = vi.fn((batch: SourceChangeBatch): SourceChangeAck => {
-      if ([...batch.bufferText].some((character) => character.charCodeAt(0) === 0xd800)) {
+      const projected = applySourceTextEditsToView("A", batch.changes);
+      if ([...projected].some((character) => character.charCodeAt(0) === 0xd800)) {
         return { kind: "rejected", validationError: "invalid" };
       }
       return {
         kind: "accepted",
-        candidateRevision: batch.baseCandidateRevision + (batch.bufferText === "A" ? 0 : 1),
-        view: sourceView(batch.bufferText),
+        candidateRevision: batch.baseCandidateRevision + (projected === "A" ? 0 : 1),
       };
     });
     const rendered = render(<SourceEditor {...props({ onChangeBatch, onUndo })} />);
@@ -160,10 +188,11 @@ describe("SourceEditor real CodeMirror integration", () => {
     const onUndo = vi.fn(() => true);
     const onRedo = vi.fn(() => true);
     const onChangeBatch = vi.fn((batch: SourceChangeBatch): SourceChangeAck => {
-      if (batch.bufferText.includes("\ud800")) {
+      const projected = applySourceTextEditsToView("B", batch.changes);
+      if (projected.includes("\ud800")) {
         return { kind: "rejected", validationError: "invalid" };
       }
-      return { kind: "accepted", candidateRevision: 0, view: sourceView(batch.bufferText) };
+      return { kind: "accepted", candidateRevision: 0 };
     });
     const rendered = render(<SourceEditor {...props({
       view: sourceView("B"),
@@ -192,7 +221,7 @@ describe("SourceEditor real CodeMirror integration", () => {
     await waitFor(() => expect(view.state.doc.toString()).toBe("B"));
     expect(onUndo).not.toHaveBeenCalled();
     expect(onRedo).not.toHaveBeenCalled();
-    expect(onChangeBatch.mock.calls.map(([batch]) => batch.bufferText)).toEqual([
+    expect(onChangeBatch.mock.calls.map(([batch]) => applySourceTextEditsToView("B", batch.changes))).toEqual([
       "B\ud800", "XB\ud800Y", "B\ud800", "XB\ud800Y", "B\ud800", "B",
     ]);
     expect(codeMirrorRedo(view)).toBe(false);
@@ -278,9 +307,9 @@ describe("SourceEditor real CodeMirror integration", () => {
   it("uses local Source history from Find focus while rejected and leaves app Undo untouched", async () => {
     const onUndo = vi.fn(() => true);
     const onChangeBatch = vi.fn((batch: SourceChangeBatch): SourceChangeAck =>
-      batch.bufferText.includes("\ud800")
+      applySourceTextEditsToView("A", batch.changes).includes("\ud800")
         ? { kind: "rejected", validationError: "invalid" }
-        : { kind: "accepted", candidateRevision: 0, view: sourceView(batch.bufferText) },
+        : { kind: "accepted", candidateRevision: 0 },
     );
     const rendered = render(<SourceEditor {...props({ onChangeBatch, onUndo })} />);
     const view = editorFrom(rendered.container);
@@ -405,10 +434,9 @@ describe("SourceEditor real CodeMirror integration", () => {
       selection: { anchor: 4, head: 4 },
     }));
     expect(view.state.doc.toString().startsWith("中文😀")).toBe(true);
-    expect(componentProps.onChangeBatch).toHaveBeenLastCalledWith(expect.objectContaining({
-      bufferText: expect.stringMatching(/^中文😀/),
-      selectionAfter: { anchor: 4, head: 4 },
-    }));
+    const batch = vi.mocked(componentProps.onChangeBatch).mock.calls.at(-1)?.[0];
+    expect(batch?.selectionAfter).toEqual({ anchor: 4, head: 4 });
+    expect(applySourceTextEditsToView(longDocument, batch?.changes ?? [])).toMatch(/^中文😀/);
   });
 
   it("publishes guarded Copy, Select All, and Focus operations that become stale on unmount", async () => {
@@ -578,9 +606,9 @@ describe("SourceEditor real CodeMirror integration", () => {
   it("invalidates a real local redo branch when a canonical candidate replaces it", async () => {
     const onRedo = vi.fn(() => true);
     const onChangeBatch = vi.fn((batch: SourceChangeBatch): SourceChangeAck =>
-      batch.bufferText.includes("\ud800")
+      applySourceTextEditsToView("A", batch.changes).includes("\ud800")
         ? { kind: "rejected", validationError: "invalid" }
-        : { kind: "accepted", candidateRevision: 0, view: sourceView(batch.bufferText) },
+        : { kind: "accepted", candidateRevision: 0 },
     );
     const componentProps = props({ onChangeBatch, onRedo });
     const rendered = render(<SourceEditor {...componentProps} />);
@@ -612,17 +640,16 @@ describe("SourceEditor real CodeMirror integration", () => {
 
     await waitFor(() => expect(editorFrom(rendered.container).state.doc.toString()).toBe("中文😀"));
     await waitFor(() => expect(componentProps.onChangeBatch).toHaveBeenCalledOnce());
-    expect(vi.mocked(componentProps.onChangeBatch).mock.calls.at(-1)?.[0]).toMatchObject({
-      bufferText: "中文😀",
-      selectionAfter: { anchor: 4, head: 4 },
-    });
+    const batch = vi.mocked(componentProps.onChangeBatch).mock.calls.at(-1)?.[0];
+    expect(batch?.selectionAfter).toEqual({ anchor: 4, head: 4 });
+    expect(applySourceTextEditsToView("", batch?.changes ?? [])).toBe("中文😀");
   });
 
   it("repairs a rejected multi-transaction composition to the accepted base with one local Undo", async () => {
     const onUndo = vi.fn(() => true);
     const onChangeBatch = vi.fn((batch: SourceChangeBatch): SourceChangeAck =>
-      batch.bufferText === "A"
-        ? { kind: "accepted", candidateRevision: 0, view: sourceView("A") }
+      applySourceTextEditsToView("A", batch.changes) === "A"
+        ? { kind: "accepted", candidateRevision: 0 }
         : { kind: "rejected", validationError: "invalid" },
     );
     const rendered = render(<SourceEditor {...props({ onChangeBatch, onUndo })} />);
@@ -649,7 +676,7 @@ describe("SourceEditor real CodeMirror integration", () => {
     await waitFor(() => expect(view.state.doc.toString()).toBe("A"));
     await waitFor(() => expect(content).not.toHaveAttribute("aria-invalid", "true"));
     expect(onChangeBatch).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(onChangeBatch).mock.calls.at(-1)?.[0].bufferText).toBe("A");
+    expect(applySourceTextEditsToView("A", vi.mocked(onChangeBatch).mock.calls.at(-1)?.[0].changes ?? [])).toBe("A");
     expect(onUndo).not.toHaveBeenCalled();
   });
 

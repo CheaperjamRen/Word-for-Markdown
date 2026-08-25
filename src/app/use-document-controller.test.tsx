@@ -164,10 +164,9 @@ function replaceSourceText(
   return controller.applySourceChangeBatch({
     sessionId: tabId,
     baseCandidateRevision: expectedRevision,
-    baseView: view,
     changes: [{ from: 0, to: view.text.length, insert: text }],
-    bufferText: text,
     selectionAfter: { anchor: text.length, head: text.length },
+    historyGroup: { id: `replace-${expectedRevision}`, kind: "atomic" },
   });
 }
 
@@ -494,10 +493,9 @@ describe("document controller", () => {
       expect(controller.applySourceChangeBatch({
         sessionId: tabId,
         baseCandidateRevision: 0,
-        baseView: initialView,
         changes: [{ from: 0, to: initialView.text.length, insert: "B\n" }],
-        bufferText: "B\n",
         selectionAfter: { anchor: 1, head: 1 },
+        historyGroup: { id: "save-as-initial", kind: "atomic" },
       })).toMatchObject({ kind: "accepted", candidateRevision: 1 });
 
       const dialog = deferred<string | null>();
@@ -519,10 +517,9 @@ describe("document controller", () => {
       expect(controller.applySourceChangeBatch({
         sessionId: tabId,
         baseCandidateRevision: 1,
-        baseView: changedView,
         changes: [{ from: 1, to: 1, insert: "C" }],
-        bufferText: "BC\n",
         selectionAfter: { anchor: 2, head: 2 },
+        historyGroup: { id: "save-as-changed", kind: "atomic" },
       })).toMatchObject({ kind: "accepted", candidateRevision: 2 });
       expect(controller.tabs[0]).toMatchObject({ status: "dirty", candidate: { text: "BC\n" } });
 
@@ -1428,6 +1425,49 @@ describe("document controller", () => {
       expect(setMode?.(tabId, 1, "reading")).toBe("stale");
     });
 
+    it("accepts a compact Source batch from its revision-bound canonical cache", async () => {
+      const fixture = hostFixture();
+      vi.mocked(fixture.host.openDocument).mockResolvedValue(payload("C:\\docs\\compact.md", "A\n"));
+      const controller = createDocumentController(fixture.host);
+      await controller.openPaths(["C:\\docs\\compact.md"]);
+      const tabId = controller.activeTabId!;
+      expect(controller.setMode(tabId, 0, "source")).toBe("changed");
+
+      const ack = controller.applySourceChangeBatch({
+        sessionId: tabId,
+        baseCandidateRevision: 0,
+        changes: [{ from: 0, to: 1, insert: "B" }],
+        selectionAfter: { anchor: 1, head: 1 },
+        historyGroup: { id: "compact-1", kind: "atomic" },
+      } as unknown as SourceChangeBatch);
+
+      expect(ack).toEqual({ kind: "accepted", candidateRevision: 1 });
+      expect(controller.tabs[0]).toMatchObject({ candidate: { text: "B\n" }, revision: 1 });
+    });
+
+    it("reconstructs an exact rejected Source buffer from a compact batch", async () => {
+      const fixture = hostFixture();
+      vi.mocked(fixture.host.openDocument).mockResolvedValue(payload("C:\\docs\\compact-invalid.md", "A\n"));
+      const controller = createDocumentController(fixture.host);
+      await controller.openPaths(["C:\\docs\\compact-invalid.md"]);
+      const tabId = controller.activeTabId!;
+      expect(controller.setMode(tabId, 0, "source")).toBe("changed");
+
+      const ack = controller.applySourceChangeBatch({
+        sessionId: tabId,
+        baseCandidateRevision: 0,
+        changes: [{ from: 1, to: 1, insert: "\ud800" }],
+        selectionAfter: { anchor: 2, head: 2 },
+        historyGroup: { id: "compact-invalid-1", kind: "atomic" },
+      } as unknown as SourceChangeBatch);
+
+      expect(ack.kind).toBe("rejected");
+      const rejected = controller.tabs[0];
+      if (rejected.kind !== "document") throw new Error("missing document");
+      expect(rejected.sourceBuffer?.bufferText).toBe("A\ud800\n");
+      expect(rejected.sourceBuffer?.bufferText.charCodeAt(1)).toBe(0xd800);
+    });
+
     it("builds each current 102400-byte canonical view once and parses one accepted Source candidate once", async () => {
       const fixture = hostFixture();
       const markdown = buildSizedMarkdown(102_400);
@@ -1470,10 +1510,9 @@ describe("document controller", () => {
       const batch: SourceChangeBatch = {
         sessionId: tabId,
         baseCandidateRevision: 0,
-        baseView: view,
         changes,
-        bufferText: expectedText,
         selectionAfter: { anchor: expectedText.length, head: expectedText.length },
+        historyGroup: { id: "large-initial", kind: "atomic" },
       };
 
       expect(sourceController.applySourceChangeBatch(batch)).toMatchObject({
@@ -1502,10 +1541,9 @@ describe("document controller", () => {
         expect(sourceController.applySourceChangeBatch({
           sessionId: tabId,
           baseCandidateRevision: revision,
-          baseView: currentView,
           changes: [{ from: currentView.text.length, to: currentView.text.length, insert: "x" }],
-          bufferText: next,
           selectionAfter: { anchor: next.length, head: next.length },
+          historyGroup: { id: `large-${index}`, kind: "atomic" },
         })).toMatchObject({ kind: "accepted", candidateRevision: revision + 1 });
         revision += 1;
       }
@@ -1552,10 +1590,9 @@ describe("document controller", () => {
         return controller.applySourceChangeBatch({
           sessionId: tabId,
           baseCandidateRevision: 0,
-          baseView: view,
           changes: [{ from: 1, to: 1, insert: "\ud800" }],
-          bufferText: "A\ud800\n",
           selectionAfter: { anchor: 2, head: 2 },
+          historyGroup: { id: "repair-rejected", kind: "atomic" },
         });
       };
 
@@ -1566,10 +1603,9 @@ describe("document controller", () => {
       expect(controller.applySourceChangeBatch({
         sessionId: tabId,
         baseCandidateRevision: 0,
-        baseView: controller.getSourceView(tabId, 0)!,
         changes: [],
-        bufferText: "A\n",
         selectionAfter: { anchor: 1, head: 1 },
+        historyGroup: { id: "repair-exact", kind: "atomic" },
       })).toMatchObject({ kind: "accepted", candidateRevision: 0 });
       const exact = controller.tabs[0];
       if (exact.kind !== "document") throw new Error("missing exact repair document");
@@ -1585,10 +1621,9 @@ describe("document controller", () => {
       expect(controller.applySourceChangeBatch({
         sessionId: tabId,
         baseCandidateRevision: 0,
-        baseView: controller.getSourceView(tabId, 0)!,
         changes: [{ from: 1, to: 1, insert: "B" }],
-        bufferText: "AB\n",
         selectionAfter: { anchor: 2, head: 2 },
+        historyGroup: { id: "repair-different", kind: "atomic" },
       })).toMatchObject({ kind: "accepted", candidateRevision: 1 });
       const different = controller.tabs[0];
       if (different.kind !== "document") throw new Error("missing different repair document");
@@ -1624,12 +1659,11 @@ describe("document controller", () => {
         const ack = controller.applySourceChangeBatch({
           sessionId: tabId,
           baseCandidateRevision: 0,
-          baseView: view,
           changes: route === "same-text replacement"
             ? [{ from: 0, to: 1, insert: "A" }]
             : [],
-          bufferText: view.text,
           selectionAfter: { anchor: 1, head: 1 },
+          historyGroup: { id: `no-op-${route}`, kind: "atomic" },
         });
 
         expect(ack).toMatchObject({ kind: "accepted", candidateRevision: 0 });
@@ -1651,8 +1685,7 @@ describe("document controller", () => {
           } },
         });
         if (ack.kind !== "accepted") throw new Error("missing accepted no-op ack");
-        expect(ack.view).not.toBe(view);
-        expect(ack.view).toEqual(view);
+        expect(ack).toEqual({ kind: "accepted", candidateRevision: 0 });
       },
     );
 
@@ -1674,14 +1707,15 @@ describe("document controller", () => {
       controller.setMode(untitledId, 0, "source");
       const view = controller.getSourceView(untitledId, 0)!;
       expect(controller.applySourceChangeBatch({
-        sessionId: untitledId, baseCandidateRevision: 0, baseView: view,
+        sessionId: untitledId, baseCandidateRevision: 0,
         changes: [{ from: 0, to: 0, insert: "\ud800" }],
-        bufferText: "\ud800", selectionAfter: { anchor: 1, head: 1 },
+        selectionAfter: { anchor: 1, head: 1 },
+        historyGroup: { id: "empty-rejected", kind: "atomic" },
       })).toMatchObject({ kind: "rejected" });
       expect(controller.applySourceChangeBatch({
         sessionId: untitledId, baseCandidateRevision: 0,
-        baseView: controller.getSourceView(untitledId, 0)!,
-        changes: [], bufferText: "", selectionAfter: { anchor: 0, head: 0 },
+        changes: [], selectionAfter: { anchor: 0, head: 0 },
+        historyGroup: { id: "empty-exact", kind: "atomic" },
       })).toMatchObject({ kind: "accepted", candidateRevision: 0 });
       expect(controller.tabs[0]).toMatchObject({
         file: { kind: "untitled" }, status: "dirty", sourceBuffer: null,
@@ -1699,9 +1733,10 @@ describe("document controller", () => {
       controller.setMode(tabId, 0, "source");
       const view = controller.getSourceView(tabId, 0)!;
       expect(controller.applySourceChangeBatch({
-        sessionId: tabId, baseCandidateRevision: 0, baseView: view,
+        sessionId: tabId, baseCandidateRevision: 0,
         changes: [{ from: 1, to: 1, insert: "\ud800" }],
-        bufferText: "A\ud800\n", selectionAfter: { anchor: 2, head: 2 },
+        selectionAfter: { anchor: 2, head: 2 },
+        historyGroup: { id: "stale-repair-rejected", kind: "atomic" },
       })).toMatchObject({ kind: "rejected" });
 
       const internals = controller as unknown as { dispatch(action: SessionAction): void };
@@ -1721,8 +1756,8 @@ describe("document controller", () => {
 
       expect(controller.applySourceChangeBatch({
         sessionId: tabId, baseCandidateRevision: 0,
-        baseView: controller.getSourceView(tabId, 0)!,
-        changes: [], bufferText: "A\n", selectionAfter: { anchor: 1, head: 1 },
+        changes: [], selectionAfter: { anchor: 1, head: 1 },
+        historyGroup: { id: "stale-repair-exact", kind: "atomic" },
       })).toEqual({ kind: "stale" });
       expect(controller.tabs[0]).toMatchObject({
         revision: beforeRevision,
@@ -1730,7 +1765,7 @@ describe("document controller", () => {
       });
     });
 
-    it("installs direct split selection atomically and keeps the accepted ack view defensive", async () => {
+    it("installs direct split selection atomically without returning a caller-owned view", async () => {
       const fixture = hostFixture();
       vi.mocked(fixture.host.openDocument).mockResolvedValue(payload("C:\\docs\\split.md", "A\n\nB\n"));
       const controller = createDocumentController(fixture.host);
@@ -1745,10 +1780,9 @@ describe("document controller", () => {
       const ack = controller.applySourceChangeBatch({
         sessionId: tabId,
         baseCandidateRevision: 0,
-        baseView: view,
         changes: [{ from: 0, to: 1, insert }],
-        bufferText,
         selectionAfter: { anchor: endpoint, head: endpoint },
+        historyGroup: { id: "split", kind: "atomic" },
       });
       expect(ack).toMatchObject({ kind: "accepted", candidateRevision: 1 });
       expect(controller.tabs[0]).toMatchObject({
@@ -1759,14 +1793,15 @@ describe("document controller", () => {
         } },
       });
       if (ack.kind !== "accepted") throw new Error("missing accepted split ack");
-      ack.view.byteOffsetAtViewOffset[0] = 999;
-      ack.view.text = "mutated caller text";
+      expect(ack).toEqual({ kind: "accepted", candidateRevision: 1 });
+      view.byteOffsetAtViewOffset[0] = 999;
+      view.text = "mutated caller text";
       const canonical = controller.getSourceView(tabId, 1)!;
       expect(canonical.text).toBe(bufferText);
       expect(canonical.byteOffsetAtViewOffset[0]).toBe(0);
     });
 
-    it("fails caller-owned Source view, projection, range, and surrogate-boundary mismatches with zero state mutation", async () => {
+    it("fails stale revision, invalid ranges, and surrogate-boundary changes with zero state mutation", async () => {
       const fixture = hostFixture();
       vi.mocked(fixture.host.openDocument).mockResolvedValue(payload("C:\\docs\\emoji.md", "A😀\n"));
       const controller = createDocumentController(fixture.host);
@@ -1782,25 +1817,18 @@ describe("document controller", () => {
       const batch = (overrides: Partial<SourceChangeBatch>): SourceChangeBatch => ({
         sessionId: tabId,
         baseCandidateRevision: 0,
-        baseView: { text: canonical.text, byteOffsetAtViewOffset: canonical.byteOffsetAtViewOffset.slice() },
         changes: [],
-        bufferText: canonical.text,
         selectionAfter: { anchor: 0, head: 0 },
+        historyGroup: { id: "invalid-batch", kind: "atomic" },
         ...overrides,
       });
       const cases = [
-        batch({ baseView: { text: `${canonical.text}x`, byteOffsetAtViewOffset: canonical.byteOffsetAtViewOffset.slice() } }),
-        (() => {
-          const map = canonical.byteOffsetAtViewOffset.slice();
-          map[0] += 1;
-          return batch({ baseView: { text: canonical.text, byteOffsetAtViewOffset: map } });
-        })(),
-        batch({ changes: [{ from: 0, to: 1, insert: "B" }], bufferText: "not-the-projection" }),
+        batch({ baseCandidateRevision: 1 }),
         batch({
           changes: [{ from: 0, to: 2, insert: "x" }, { from: 1, to: 3, insert: "y" }],
-          bufferText: "invalid",
         }),
-        batch({ changes: [{ from: 2, to: 2, insert: "x" }], bufferText: "A\ud83dx\ude00\n" }),
+        batch({ changes: [{ from: canonical.text.length + 1, to: canonical.text.length + 1, insert: "x" }] }),
+        batch({ changes: [{ from: 2, to: 2, insert: "x" }] }),
       ];
 
       for (const invalid of cases) {
@@ -1828,16 +1856,14 @@ describe("document controller", () => {
       const batch: SourceChangeBatch = {
         sessionId: tabId,
         baseCandidateRevision: 0,
-        baseView: { text: view.text, byteOffsetAtViewOffset: view.byteOffsetAtViewOffset.slice() },
         changes,
-        bufferText: "A\ud800\n",
         selectionAfter,
+        historyGroup: { id: "defensive-rejected", kind: "atomic" },
       };
 
       expect(sourceController.applySourceChangeBatch(batch).kind).toBe("rejected");
       changes[0].insert = "mutated";
       selectionAfter.anchor = 0;
-      batch.baseView.byteOffsetAtViewOffset[0] = 999;
       const stored = controller.tabs[0].kind === "document" ? controller.tabs[0].sourceBuffer : null;
       expect(stored?.bufferText.charCodeAt(1)).toBe(0xd800);
       expect(stored?.composedChanges).toEqual([{ from: 1, to: 1, insert: "\ud800" }]);
@@ -1882,26 +1908,27 @@ describe("document controller", () => {
         controller.setMode(tabId, 0, "source");
         let view = controller.getSourceView(tabId, 0)!;
         expect(controller.applySourceChangeBatch({
-          sessionId: tabId, baseCandidateRevision: 0, baseView: view,
-          changes: [{ from: 0, to: 1, insert: "B" }], bufferText: "B\n",
+          sessionId: tabId, baseCandidateRevision: 0,
+          changes: [{ from: 0, to: 1, insert: "B" }],
           selectionAfter: { anchor: 1, head: 1 },
+          historyGroup: { id: "saving-initial", kind: "atomic" },
         })).toMatchObject({ kind: "accepted", candidateRevision: 1 });
         const saving = controller.save(tabId);
         await waitFor(() => expect(fixture.host.saveDocument).toHaveBeenCalledOnce());
 
         view = controller.getSourceView(tabId, 1)!;
         expect(controller.applySourceChangeBatch({
-          sessionId: tabId, baseCandidateRevision: 1, baseView: view,
-          changes: [{ from: 1, to: 1, insert: "\ud800" }], bufferText: "B\ud800\n",
+          sessionId: tabId, baseCandidateRevision: 1,
+          changes: [{ from: 1, to: 1, insert: "\ud800" }],
           selectionAfter: { anchor: 2, head: 2 },
+          historyGroup: { id: "saving-rejected", kind: "atomic" },
         })).toMatchObject({ kind: "rejected" });
         const repairText = repairKind === "exact" ? "B\n" : "BC\n";
         expect(controller.applySourceChangeBatch({
           sessionId: tabId, baseCandidateRevision: 1,
-          baseView: controller.getSourceView(tabId, 1)!,
           changes: repairKind === "exact" ? [] : [{ from: 1, to: 1, insert: "C" }],
-          bufferText: repairText,
           selectionAfter: { anchor: repairKind === "exact" ? 1 : 2, head: repairKind === "exact" ? 1 : 2 },
+          historyGroup: { id: `saving-repair-${repairKind}`, kind: "atomic" },
         })).toMatchObject({
           kind: "accepted",
           candidateRevision: repairKind === "exact" ? 1 : 2,
@@ -1951,22 +1978,19 @@ describe("document controller", () => {
         } else if (changeKind === "undo") {
           expect(controller.undo(tabId, 1)).toBe(true);
         } else {
-          const view = controller.getSourceView(tabId, 1)!;
           expect(controller.applySourceChangeBatch({
             sessionId: tabId,
             baseCandidateRevision: 1,
-            baseView: view,
             changes: [{ from: 1, to: 1, insert: "\ud800" }],
-            bufferText: "B\ud800\n",
             selectionAfter: { anchor: 2, head: 2 },
+            historyGroup: { id: "failed-save-rejected", kind: "atomic" },
           })).toMatchObject({ kind: "rejected" });
           expect(controller.applySourceChangeBatch({
             sessionId: tabId,
             baseCandidateRevision: 1,
-            baseView: controller.getSourceView(tabId, 1)!,
             changes: [{ from: 1, to: 1, insert: "C" }],
-            bufferText: "BC\n",
             selectionAfter: { anchor: 2, head: 2 },
+            historyGroup: { id: "failed-save-repair", kind: "atomic" },
           })).toMatchObject({ kind: "accepted", candidateRevision: 2 });
         }
         const beforeFailure = controller.tabs[0];
@@ -2142,14 +2166,12 @@ describe("document controller", () => {
         } else {
           const view = sourceController.getSourceView(tabId, 0);
           const insert = route === "accepted" ? "B" : "\ud800";
-          const text = route === "accepted" ? "B\n" : `A${insert}\n`;
           expect(sourceController.applySourceChangeBatch({
             sessionId: tabId,
             baseCandidateRevision: 0,
-            baseView: view,
             changes: [{ from: route === "accepted" ? 0 : 1, to: route === "accepted" ? 1 : 1, insert }],
-            bufferText: text,
             selectionAfter: { anchor: 1, head: 1 },
+            historyGroup: { id: `closed-${route}`, kind: "atomic" },
           }).kind).toBe(route);
         }
 
