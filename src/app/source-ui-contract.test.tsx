@@ -132,6 +132,39 @@ describe("computed Source UI contract", () => {
     ]) expect(color).toMatch(/^rgb\((?:2[0-5][0-9]|1[5-9][0-9])/);
   });
 
+  it("keeps the Tab focus escape instruction accessible without adding visible chrome", () => {
+    const rendered = render(<SourceEditor
+      sessionId="tab-hint"
+      candidateRevision={0}
+      view={view("- item")}
+      buffer={null}
+      readOnly={false}
+      zoomPercent={100}
+      initialSelection={null}
+      initialViewportOffset={null}
+      onChangeBatch={() => ({ kind: "stale" })}
+      onSelectionChange={vi.fn()}
+      onViewportOffsetChange={vi.fn()}
+      onUndo={() => false}
+      onRedo={() => false}
+      onSave={vi.fn()}
+      registerBridge={() => () => undefined}
+    />);
+    const content = rendered.container.querySelector<HTMLElement>(".cm-content")!;
+    const hint = rendered.container.querySelector<HTMLElement>("#source-editor-tab-focus-hint");
+
+    expect(hint).toHaveTextContent("按 Ctrl+M 后，Tab 可移动到编辑器外");
+    expect(hint).toHaveClass("source-editor__sr-hint");
+    expect(content.getAttribute("aria-describedby")?.split(/\s+/)).toContain("source-editor-tab-focus-hint");
+    expect(getComputedStyle(hint!)).toMatchObject({
+      position: "absolute",
+      width: "1px",
+      height: "1px",
+      overflow: "hidden",
+      whiteSpace: "nowrap",
+    });
+  });
+
   it("keeps every mounted Find control at 12/16 with usable CSS targets and compact checkboxes", async () => {
     const rendered = render(<div><SourceEditor
       sessionId="search"

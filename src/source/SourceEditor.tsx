@@ -10,6 +10,7 @@ import {
   defaultKeymap,
   history,
   historyKeymap,
+  indentWithTab,
   isolateHistory,
   redo,
   undo,
@@ -19,10 +20,13 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from "@codemirror/search";
 import {
   drawSelection,
+  dropCursor,
   EditorView,
   highlightActiveLineGutter,
+  highlightSpecialChars,
   keymap,
   lineNumbers,
+  type KeyBinding,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -89,6 +93,27 @@ const sourceHighlightStyle = HighlightStyle.define([
 
 type SourceTranslator = (key: MessageKey) => string;
 
+const SOURCE_TAB_FOCUS_HINT_ID = "source-editor-tab-focus-hint";
+const SOURCE_INVALID_NOTE_ID = "source-editor-invalid-note";
+const unsupportedMultipleSelectionKeys = new Set([
+  "Mod-d",
+  "Mod-Shift-l",
+  "Mod-Alt-ArrowUp",
+  "Mod-Alt-ArrowDown",
+]);
+
+export function singleSelectionKeymap(bindings: readonly KeyBinding[]): readonly KeyBinding[] {
+  return bindings.filter((binding) =>
+    binding.key === undefined || !unsupportedMultipleSelectionKeys.has(binding.key),
+  );
+}
+
+function sourceDescribedBy(invalid: boolean): string {
+  return invalid
+    ? `${SOURCE_TAB_FOCUS_HINT_ID} ${SOURCE_INVALID_NOTE_ID}`
+    : SOURCE_TAB_FOCUS_HINT_ID;
+}
+
 function sourceLocaleExtensions(t: SourceTranslator, editorLabel: string): Extension[] {
   return [
     EditorState.phrases.of({
@@ -110,7 +135,8 @@ function sourceLocaleExtensions(t: SourceTranslator, editorLabel: string): Exten
     }),
     EditorView.contentAttributes.of({
       "aria-label": editorLabel,
-      "aria-describedby": "source-editor-invalid-note",
+      "aria-describedby": SOURCE_TAB_FOCUS_HINT_ID,
+      "aria-keyshortcuts": "Control+M",
       spellcheck: "false",
     }),
   ];
@@ -175,6 +201,11 @@ function sourceTheme(zoomPercent: number): Extension {
     ".cm-matchingBracket": {
       backgroundColor: "var(--accent-selected)",
       outline: "1px solid var(--line-strong)",
+    },
+    ".cm-specialChar": {
+      color: "var(--danger)",
+      backgroundColor: "color-mix(in srgb, var(--danger) 8%, transparent)",
+      borderRadius: "2px",
     },
     ".cm-panels": {
       backgroundColor: "var(--chrome)",
@@ -334,7 +365,7 @@ export function SourceEditor(props: SourceEditorProps) {
         runtime.pending = ChangeSet.empty(ack.view.text.length);
         runtime.rejected = false;
         view.contentDOM.setAttribute("aria-invalid", "false");
-        view.contentDOM.removeAttribute("aria-describedby");
+        view.contentDOM.setAttribute("aria-describedby", sourceDescribedBy(false));
         setInvalid(false);
         queueMicrotask(() => {
           if (runtime.destroyed || editorRef.current !== view) return;
@@ -346,7 +377,7 @@ export function SourceEditor(props: SourceEditorProps) {
         const firstRejectedChange = !runtime.rejected;
         runtime.rejected = true;
         view.contentDOM.setAttribute("aria-invalid", "true");
-        view.contentDOM.setAttribute("aria-describedby", "source-editor-invalid-note");
+        view.contentDOM.setAttribute("aria-describedby", sourceDescribedBy(true));
         setInvalid(true);
         if (firstRejectedChange) {
           runtime.pendingHistoryIsolation = true;
@@ -369,9 +400,12 @@ export function SourceEditor(props: SourceEditorProps) {
       doc: initialText,
       selection: safeSelection(props.initialSelection, initialText.length),
       extensions: [
+        EditorView.lineWrapping,
         lineNumbers(),
         highlightActiveLineGutter(),
         drawSelection(),
+        highlightSpecialChars(),
+        dropCursor(),
         bracketMatching(),
         markdown({ base: markdownLanguage, pasteURLAsLink: false }),
         syntaxHighlighting(sourceHighlightStyle),
@@ -414,8 +448,9 @@ export function SourceEditor(props: SourceEditorProps) {
         }),
         keymap.of([
           ...applicationKeymap,
-          ...searchKeymap,
-          ...defaultKeymap,
+          indentWithTab,
+          ...singleSelectionKeymap(searchKeymap),
+          ...singleSelectionKeymap(defaultKeymap),
           ...historyKeymap,
         ]),
         EditorView.updateListener.of((update) => {
@@ -442,7 +477,7 @@ export function SourceEditor(props: SourceEditorProps) {
     );
     editorRef.current = view;
     view.contentDOM.setAttribute("aria-invalid", runtime.rejected ? "true" : "false");
-    if (!runtime.rejected) view.contentDOM.removeAttribute("aria-describedby");
+    view.contentDOM.setAttribute("aria-describedby", sourceDescribedBy(runtime.rejected));
 
     const reportViewport = () => {
       if (runtime.suppress || runtime.destroyed) return;
@@ -535,8 +570,7 @@ export function SourceEditor(props: SourceEditorProps) {
       runtime.suppress = false;
     }
     view.contentDOM.setAttribute("aria-invalid", targetRejected ? "true" : "false");
-    if (targetRejected) view.contentDOM.setAttribute("aria-describedby", "source-editor-invalid-note");
-    else view.contentDOM.removeAttribute("aria-describedby");
+    view.contentDOM.setAttribute("aria-describedby", sourceDescribedBy(targetRejected));
     if (invalid !== targetRejected) setInvalid(targetRejected);
 
   }, [
@@ -677,7 +711,8 @@ export function SourceEditor(props: SourceEditorProps) {
 
   return <div className="source-editor">
     <div className="source-editor__mount" ref={hostRef} />
-    {invalid ? <div className="source-editor__invalid-note" id="source-editor-invalid-note" role="note">
+    <span className="source-editor__sr-hint" id={SOURCE_TAB_FOCUS_HINT_ID}>{t("source.tabFocusHint")}</span>
+    {invalid ? <div className="source-editor__invalid-note" id={SOURCE_INVALID_NOTE_ID} role="note">
       {t("source.invalid")}
     </div> : null}
   </div>;

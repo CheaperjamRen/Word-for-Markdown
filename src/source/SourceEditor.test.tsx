@@ -302,6 +302,62 @@ describe("SourceEditor real CodeMirror integration", () => {
     expect(onUndo).not.toHaveBeenCalled();
   });
 
+  it("soft-wraps one logical line without changing its text or line count", () => {
+    const text = `中文 long-url https://example.com/${"segment/".repeat(200)}`;
+    const componentProps = props({ view: sourceView(text) });
+    const rendered = render(<SourceEditor {...componentProps} />);
+    const view = editorFrom(rendered.container);
+
+    expect(view.lineWrapping).toBe(true);
+    expect(view.state.doc.lines).toBe(1);
+    expect(view.state.doc.toString()).toBe(text);
+    expect(rendered.container.querySelector(".cm-content")).toHaveClass("cm-lineWrapping");
+    expect(rendered.container.querySelector(".cm-lineNumbers")).not.toBeNull();
+    expect(componentProps.onChangeBatch).not.toHaveBeenCalled();
+  });
+
+  it("marks invisible control characters and shows an exact cursor only while dragging", async () => {
+    const rendered = render(<SourceEditor {...props({ view: sourceView("A\u200bB") })} />);
+    const view = editorFrom(rendered.container);
+    const content = rendered.container.querySelector<HTMLElement>(".cm-content")!;
+
+    await waitFor(() => expect(rendered.container.querySelector(".cm-specialChar")).not.toBeNull());
+    vi.spyOn(view, "posAtCoords").mockReturnValue(1);
+    content.dispatchEvent(new MouseEvent("dragover", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+    await waitFor(() => expect(rendered.container.querySelector(".cm-dropCursor")).not.toBeNull());
+
+    content.dispatchEvent(new MouseEvent("dragleave", { bubbles: true, relatedTarget: document.body }));
+    await waitFor(() => expect(rendered.container.querySelector(".cm-dropCursor")).toBeNull());
+  });
+
+  it("uses Tab for indentation without consuming unsupported multi-selection shortcuts", () => {
+    const rendered = render(<SourceEditor {...props({ view: sourceView("- item") })} />);
+    const content = rendered.container.querySelector<HTMLElement>(".cm-content")!;
+    const view = editorFrom(rendered.container);
+    act(() => view.dispatch({ selection: { anchor: 0 } }));
+
+    const tab = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Tab" });
+    content.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toMatch(/^\s+- item$/);
+
+    act(() => view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } }));
+    const multi = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "d",
+    });
+    content.dispatchEvent(multi);
+    expect(multi.defaultPrevented).toBe(false);
+    expect(view.state.selection.ranges).toHaveLength(1);
+  });
+
   it("installs exact GFM syntax, localized search, and direct zoom pixels on the real editor", async () => {
     const markdown = "# 标题\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n- [x] done\n\n~~删除线~~ <https://example.com>";
     const rendered = render(<SourceEditor {...props({ view: sourceView(markdown), zoomPercent: 150 })} />);
@@ -332,7 +388,7 @@ describe("SourceEditor real CodeMirror integration", () => {
     expect(content).toHaveFocus();
   });
 
-  it("keeps real line numbers, bracket matching, long-line scrolling, and CJK/emoji selection replacement", async () => {
+  it("keeps real line numbers, bracket matching, virtualized scrolling, and CJK/emoji selection replacement", async () => {
     const longDocument = `${Array.from({ length: 400 }, (_, index) => `line ${index} (${index})`).join("\n")}\n${"x".repeat(4_000)}`;
     const componentProps = props({ view: sourceView(longDocument) });
     const rendered = render(<SourceEditor {...componentProps} />);
