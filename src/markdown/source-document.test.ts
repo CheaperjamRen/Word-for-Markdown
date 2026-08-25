@@ -389,6 +389,23 @@ it("builds a dense Uint32Array view and applies ordered source changes byte-exac
   );
 });
 
+it("appends Source text without rewriting distant frontmatter and Protected Raw", () => {
+  const encoder = new TextEncoder();
+  const originalBytes = encoder.encode(`${PROTECTED_LOGICAL_TEXT}\nplain tail`);
+  const document = parseSourceDocument(originalBytes);
+  const view = buildSourceView(document);
+  const context = sourceContext(document, view);
+
+  const result = applyDocumentEdit(document, {
+    kind: "source-changes",
+    view,
+    changes: [{ from: view.text.length, to: view.text.length, insert: " marker" }],
+  }, context);
+
+  expect(result.candidate.bytes.slice(0, originalBytes.length)).toEqual(originalBytes);
+  expect(decodeSourceBytes(result.candidate.bytes)).toBe(`${PROTECTED_LOGICAL_TEXT}\nplain tail marker`);
+});
+
 it("allocates one final byte buffer for a 100-change transaction across 100KB", () => {
   const bytes = new Uint8Array(102_400).fill(0x61);
   const document = parseSourceDocument(bytes);

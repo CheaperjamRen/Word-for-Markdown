@@ -38,6 +38,9 @@ test("creates deterministic representative and extreme Source QA fixtures", () =
   ]) {
     assert.ok(representative.includes(marker), `missing representative marker: ${marker}`);
   }
+  assert.ok(representative.includes(
+    '<custom-widget data-value="untouched"></custom-widget>\n\nLong-form Markdown',
+  ));
 
   const representative1Mb = readFileSync(files.representative1Mb);
   assert.deepEqual([...representative1Mb.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
@@ -46,6 +49,9 @@ test("creates deterministic representative and extreme Source QA fixtures", () =
   assert.equal(representative1MbText.replaceAll("\r\n", "").includes("\n"), false);
   assert.ok(representative1MbText.includes(":::codex-private"));
   assert.ok(representative1MbText.includes("<custom-widget"));
+  assert.ok(representative1MbText.includes(
+    '<custom-widget data-value="untouched"></custom-widget>\r\n\r\nLong-form Markdown',
+  ));
 
   const singleLine = readFileSync(files.singleLine100Kb, "utf8");
   assert.equal(singleLine.includes("\n"), false);

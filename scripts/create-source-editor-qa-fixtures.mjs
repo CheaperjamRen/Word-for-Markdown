@@ -41,6 +41,7 @@ function exactRepresentativeMarkdown(targetBytes, newline, includeBom = false) {
     "",
     '<custom-widget data-value="untouched"></custom-widget>',
     "",
+    "",
   ].join(newline)}`;
   const repeatedParagraph = [
     "Long-form Markdown should remain readable and editable without changing its source bytes.",
