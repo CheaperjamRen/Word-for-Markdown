@@ -57,7 +57,7 @@ Word for Markdown 接上这段本地体验。它打开 `.md` / `.markdown` 后�
 
 ### 需要精确控制时，回到源码
 
-源码模式基于 CodeMirror 6，提供行号、Markdown 高亮、查找替换和大文档虚拟化。富文本与源码编辑都作用于同一份内存候选内容，只有点击保存或按下 `Ctrl+S` 才会写入原文件。
+源码模式基于 CodeMirror 6，提供软换行与真实行号、Markdown 高亮、查找替换、自然撤销分组和大文档虚拟化。长行只在屏幕内视觉折行，不会改写原文或虚增行号；富文本与源码编辑都作用于同一份内存候选内容，只有点击保存或按下 `Ctrl+S` 才会写入原文件。
 
 ![Word for Markdown 源码模式](.github/assets/readme/source.png)
 

@@ -57,7 +57,7 @@ Edit continuously across the document and use headings, bold, italic, strikethro
 
 ### Precise control in Source mode
 
-Source mode uses CodeMirror 6 with line numbers, Markdown highlighting, find and replace, and virtualization for large documents. Rich Text and Source editing update the same in-memory candidate; the original file is written only when you choose Save or press `Ctrl+S`.
+Source mode uses CodeMirror 6 with soft wrapping, logical line numbers, Markdown highlighting, find and replace, natural undo groups, and virtualization for large documents. Long lines wrap visually without changing the Markdown or inventing line numbers. Rich Text and Source editing update the same in-memory candidate; the original file is written only when you choose Save or press `Ctrl+S`.
 
 ![Markdown Source mode in Word for Markdown](.github/assets/readme/source.png)
 
