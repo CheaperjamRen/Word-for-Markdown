@@ -1,3 +1,4 @@
+use crate::file_watch::register_internal_rename;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -425,6 +426,8 @@ where
     before_replace();
     ensure_absent(&transaction.replaced_backup, &transaction)?;
     ensure_absent(&transaction.rollback_capture, &transaction)?;
+    let internal_rename =
+        register_internal_rename(&transaction.target, &transaction.replaced_backup);
     if let Err(source) = replace_op.replace(
         &transaction.target,
         &transaction.replacement,
@@ -432,6 +435,7 @@ where
     ) {
         return Err(classify_failure(&transaction, source));
     }
+    internal_rename.keep_for_async_delivery();
     after_replace();
 
     let backup = cleanup_snapshot_for_transaction(&transaction.replaced_backup, &transaction)?;
@@ -470,6 +474,8 @@ where
     before_rollback();
     ensure_absent(&transaction.rollback_capture, &transaction)?;
 
+    let internal_rename =
+        register_internal_rename(&transaction.target, &transaction.rollback_capture);
     if let Err(source) = replace_op.replace(
         &transaction.target,
         &transaction.replaced_backup,
@@ -477,6 +483,7 @@ where
     ) {
         return Err(classify_failure(&transaction, source));
     }
+    internal_rename.keep_for_async_delivery();
 
     let rolled_back_target = no_delete_snapshot_for_transaction(&transaction.target, &transaction)?;
     let local = no_delete_snapshot_for_transaction(&transaction.local_recovery, &transaction)?;

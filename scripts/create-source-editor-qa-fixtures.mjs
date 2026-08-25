@@ -5,8 +5,12 @@ import { fileURLToPath } from "node:url";
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = resolve(dirname(scriptPath), "..");
 
-function exactRepresentativeMarkdown(targetBytes, newline) {
-  const base = [
+function exactRepresentativeMarkdown(targetBytes, newline, includeBom = false) {
+  const base = `${includeBom ? "\uFEFF" : ""}${[
+    "---",
+    "qa: source-editor",
+    "---",
+    "",
     "# Source editor QA",
     "",
     "中文段落用于验证输入法、软换行与选区；emoji 🧭 不得破坏 UTF-16 偏移。",
@@ -31,7 +35,13 @@ function exactRepresentativeMarkdown(targetBytes, newline) {
     "\\sqrt{x^2 + y^2}",
     "$$",
     "",
-  ].join(newline);
+    ":::codex-private",
+    "opaque: **must stay byte-identical**",
+    ":::",
+    "",
+    '<custom-widget data-value="untouched"></custom-widget>',
+    "",
+  ].join(newline)}`;
   const repeatedParagraph = [
     "Long-form Markdown should remain readable and editable without changing its source bytes.",
     "",
@@ -76,7 +86,11 @@ export function createSourceEditorQaFixtures(outputDirectory) {
     singleLine100Kb: join(output, "source-single-line-100kb.md"),
   };
   writeFileSync(files.representative100Kb, exactRepresentativeMarkdown(102_400, "\n"), "utf8");
-  writeFileSync(files.representative1Mb, exactRepresentativeMarkdown(1_048_576, "\r\n"), "utf8");
+  writeFileSync(
+    files.representative1Mb,
+    exactRepresentativeMarkdown(1_048_576, "\r\n", true),
+    "utf8",
+  );
   writeFileSync(files.singleLine100Kb, exactSingleLineMarkdown(102_400), "utf8");
   return files;
 }

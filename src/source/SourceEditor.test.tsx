@@ -130,6 +130,23 @@ describe("SourceEditor real CodeMirror integration", () => {
     expect(rendered.container.querySelectorAll(".cm-editor")).toHaveLength(1);
   });
 
+  it("does not rebuild the whole CodeMirror string for an accepted props echo", () => {
+    const componentProps = props();
+    const rendered = render(<SourceEditor {...componentProps} />);
+    const view = editorFrom(rendered.container);
+
+    act(() => view.dispatch({ changes: { from: 1, insert: "B" } }));
+    const toString = vi.spyOn(view.state.doc, "toString");
+    rendered.rerender(<SourceEditor
+      {...componentProps}
+      candidateRevision={1}
+      view={sourceView("AB")}
+    />);
+
+    expect(toString).not.toHaveBeenCalled();
+    expect(view.state.doc.length).toBe(2);
+  });
+
   it("submits only revision-bound incremental Source data", () => {
     const onChangeBatch = vi.fn((_batch: SourceChangeBatch): SourceChangeAck => ({ kind: "stale" }));
     const rendered = render(<SourceEditor {...props({ onChangeBatch })} />);

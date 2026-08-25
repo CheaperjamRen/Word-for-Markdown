@@ -84,6 +84,7 @@ interface SourceRuntime {
   propRevision: number;
   propView: SourceViewModel;
   propBuffer: SourceBufferState | null;
+  expectedPropEcho: { revision: number; rejected: boolean; documentLength: number } | null;
   pendingSubmission: boolean;
   composing: boolean;
   pendingHistoryIsolation: boolean;
@@ -135,15 +136,21 @@ function sourceHistoryEditForUpdate(update: ViewUpdate, composing: boolean): Sou
   let from = Number.POSITIVE_INFINITY;
   let to = 0;
   let hasLineBreak = false;
+  let hasReplacement = false;
   update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
     from = Math.min(from, fromA);
     to = Math.max(to, toA);
     if (!hasLineBreak && inserted.toString().includes("\n")) hasLineBreak = true;
+    if (toA > fromA && inserted.length > 0) hasReplacement = true;
   });
   const transaction = update.transactions.at(-1);
   const userEvent = transaction?.annotation(Transaction.userEvent);
   const beforeHead = update.startState.selection.main.head;
-  const kind = composing ? "composition" : hasLineBreak ? "atomic" : sourceHistoryKind(userEvent);
+  const kind = composing
+    ? "composition"
+    : hasLineBreak || hasReplacement
+      ? "atomic"
+      : sourceHistoryKind(userEvent);
   const deleteDirection = userEvent?.includes(".backward")
     ? "backward"
     : userEvent?.includes(".forward")
@@ -353,6 +360,7 @@ export function SourceEditor(props: SourceEditorProps) {
       propRevision: props.candidateRevision,
       propView: props.view,
       propBuffer: props.buffer,
+      expectedPropEcho: null,
       pendingSubmission: false,
       composing: false,
       pendingHistoryIsolation: false,
@@ -391,6 +399,7 @@ export function SourceEditor(props: SourceEditorProps) {
         preventDefault: true,
         run: () => {
           endHistoryGroup();
+          runtime.expectedPropEcho = null;
           if (runtime.rejected) undo(view);
           else propsRef.current.onUndo(runtime.baseRevision);
           return true;
@@ -402,6 +411,7 @@ export function SourceEditor(props: SourceEditorProps) {
         preventDefault: true,
         run: () => {
           endHistoryGroup();
+          runtime.expectedPropEcho = null;
           if (runtime.rejected) redo(view);
           else propsRef.current.onRedo(runtime.baseRevision);
           return true;
@@ -427,6 +437,11 @@ export function SourceEditor(props: SourceEditorProps) {
       const ack = propsRef.current.onChangeBatch(batch);
       if (ack.kind === "accepted") {
         runtime.baseRevision = ack.candidateRevision;
+        runtime.expectedPropEcho = {
+          revision: ack.candidateRevision,
+          rejected: false,
+          documentLength: view.state.doc.length,
+        };
         runtime.pending = ChangeSet.empty(view.state.doc.length);
         runtime.pendingHistoryGroup = null;
         runtime.rejected = false;
@@ -442,6 +457,11 @@ export function SourceEditor(props: SourceEditorProps) {
       } else if (ack.kind === "rejected") {
         const firstRejectedChange = !runtime.rejected;
         runtime.rejected = true;
+        runtime.expectedPropEcho = {
+          revision: runtime.baseRevision,
+          rejected: true,
+          documentLength: view.state.doc.length,
+        };
         view.contentDOM.setAttribute("aria-invalid", "true");
         view.contentDOM.setAttribute("aria-describedby", sourceDescribedBy(true));
         setInvalid(true);
@@ -624,7 +644,18 @@ export function SourceEditor(props: SourceEditorProps) {
       currentSelection.anchor !== selection.main.anchor ||
       currentSelection.head !== selection.main.head
     ));
-    const docChanged = externalDocumentChanged && view.state.doc.toString() !== targetText;
+    const expectedPropEcho = runtime.expectedPropEcho;
+    const isExpectedPropEcho = Boolean(
+      externalDocumentChanged &&
+      expectedPropEcho &&
+      expectedPropEcho.revision === targetRevision &&
+      expectedPropEcho.rejected === targetRejected &&
+      expectedPropEcho.documentLength === targetText.length &&
+      view.state.doc.length === targetText.length
+    );
+    const docChanged = externalDocumentChanged &&
+      !isExpectedPropEcho &&
+      view.state.doc.toString() !== targetText;
 
     runtime.suppress = true;
     try {
@@ -652,6 +683,7 @@ export function SourceEditor(props: SourceEditorProps) {
         resetCodeMirrorHistory(view, historyCompartmentRef.current);
       }
       if (externalDocumentChanged) {
+        runtime.expectedPropEcho = null;
         runtime.propRevision = props.candidateRevision;
         runtime.propView = props.view;
         runtime.propBuffer = props.buffer;

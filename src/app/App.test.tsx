@@ -485,4 +485,48 @@ describe("desktop document shell", () => {
     }));
     await waitFor(() => expect(view.state.doc.toString()).toBe(`${before}hello`));
   });
+
+  it("keeps selection replacement separate from the following Source typing group", async () => {
+    const user = userEvent.setup();
+    const { host } = testHost(["C:\\docs\\first.md"]);
+    render(<App host={host} />);
+    await screen.findByRole("heading", { name: "第一篇" });
+    await user.click(screen.getByRole("button", { name: "源码" }));
+    const textbox = await screen.findByRole("textbox", { name: "Markdown 源码编辑器" });
+    const view = EditorView.findFromDOM(textbox)!;
+    const before = view.state.doc.toString();
+    const from = before.length - 1;
+
+    act(() => view.dispatch({
+      selection: { anchor: from, head: before.length },
+      annotations: Transaction.userEvent.of("select.pointer"),
+    }));
+    act(() => view.dispatch({
+      changes: { from, to: before.length, insert: "X" },
+      selection: { anchor: before.length },
+      annotations: [
+        Transaction.userEvent.of("input.type"),
+        Transaction.time.of(100),
+      ],
+    }));
+    act(() => view.dispatch({
+      changes: { from: before.length, insert: "Y" },
+      selection: { anchor: before.length + 1 },
+      annotations: [
+        Transaction.userEvent.of("input.type"),
+        Transaction.time.of(150),
+      ],
+    }));
+    expect(view.state.doc.toString()).toBe(`${before.slice(0, -1)}XY`);
+
+    textbox.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, ctrlKey: true, key: "z",
+    }));
+    await waitFor(() => expect(view.state.doc.toString()).toBe(`${before.slice(0, -1)}X`));
+
+    textbox.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, ctrlKey: true, key: "z",
+    }));
+    await waitFor(() => expect(view.state.doc.toString()).toBe(before));
+  });
 });

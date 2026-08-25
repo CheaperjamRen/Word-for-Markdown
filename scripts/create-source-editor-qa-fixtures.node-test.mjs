@@ -28,6 +28,8 @@ test("creates deterministic representative and extreme Source QA fixtures", () =
     "# Source editor QA",
     "中文段落",
     "🧭",
+    ":::codex-private",
+    '<custom-widget data-value="untouched"></custom-widget>',
     "- list item",
     "| Capability | Status |",
     "[local Markdown link](./linked-document.md)",
@@ -36,6 +38,14 @@ test("creates deterministic representative and extreme Source QA fixtures", () =
   ]) {
     assert.ok(representative.includes(marker), `missing representative marker: ${marker}`);
   }
+
+  const representative1Mb = readFileSync(files.representative1Mb);
+  assert.deepEqual([...representative1Mb.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  const representative1MbText = representative1Mb.subarray(3).toString("utf8");
+  assert.ok(representative1MbText.includes("\r\n"));
+  assert.equal(representative1MbText.replaceAll("\r\n", "").includes("\n"), false);
+  assert.ok(representative1MbText.includes(":::codex-private"));
+  assert.ok(representative1MbText.includes("<custom-widget"));
 
   const singleLine = readFileSync(files.singleLine100Kb, "utf8");
   assert.equal(singleLine.includes("\n"), false);

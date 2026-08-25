@@ -1285,7 +1285,7 @@ fn file_watch_pairs_the_from_to_sequence_emitted_by_windows_notify() {
 }
 
 #[test]
-fn file_watch_rechecks_content_when_atomic_save_moves_the_old_file_to_its_internal_backup() {
+fn file_watch_does_not_trust_an_unregistered_internal_looking_rename() {
     let original = std::path::PathBuf::from(r"C:\docs\a.md");
     let backup = std::path::PathBuf::from(
         r"C:\docs\.markdown-spike-0123456789abcdef0123456789abcdef.replaced-backup",
@@ -1296,18 +1296,25 @@ fn file_watch_rechecks_content_when_atomic_save_moves_the_old_file_to_its_intern
         .add_path(backup.clone());
     let both_facts = classify_event("watch-both", &original, &both);
     assert_eq!(both_facts.len(), 1);
-    assert_eq!(both_facts[0].kind, FileChangedKind::Content);
-    assert_eq!(both_facts[0].new_canonical_path, None);
+    assert_eq!(both_facts[0].kind, FileChangedKind::Renamed);
+    assert_eq!(
+        both_facts[0].new_canonical_path,
+        Some(backup.to_string_lossy().into_owned())
+    );
 
     let mut classifier = EventClassifier::new("watch-split", original.clone());
     let from = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)))
         .add_path(original.clone());
-    let to = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To))).add_path(backup);
+    let to =
+        Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To))).add_path(backup.clone());
     assert!(classifier.classify(&from).is_empty());
     let split_facts = classifier.classify(&to);
     assert_eq!(split_facts.len(), 1);
-    assert_eq!(split_facts[0].kind, FileChangedKind::Content);
-    assert_eq!(split_facts[0].new_canonical_path, None);
+    assert_eq!(split_facts[0].kind, FileChangedKind::Renamed);
+    assert_eq!(
+        split_facts[0].new_canonical_path,
+        Some(backup.to_string_lossy().into_owned())
+    );
 }
 
 #[test]
