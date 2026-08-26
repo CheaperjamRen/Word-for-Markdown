@@ -73,7 +73,7 @@ Web links open in the default browser, local Markdown opens in another tab, and 
 
 ## Download and install
 
-Go to [Releases](https://github.com/CheaperjamRen/Word-for-Markdown/releases/latest) and download `Word-for-Markdown_0.1.0_x64-setup.exe`.
+Go to [Releases](https://github.com/CheaperjamRen/Word-for-Markdown/releases/latest) and download `Word-for-Markdown_0.1.1_x64-setup.exe`.
 
 The installer supports Simplified Chinese and English and installs for the current Windows user. You can open files from inside the app or select it as the default Windows application for `.md` and `.markdown` files. The English interface displays “Markdown Document.”
 
@@ -88,7 +88,7 @@ This public preview does not yet use a commercial code-signing certificate. If W
 
 ## Current scope
 
-v0.1.0 focuses on local `.md` and `.markdown` files on Windows 10/11 x64. Standard GFM is the default document profile, with reading and safe editing paths for equations, Mermaid, and frontmatter. Less common extensions that cannot be converted safely remain available as source in Source mode or the local block source editor.
+v0.1.1 supports local `.md` and `.markdown` files on Windows 10/11 x64. Standard GFM is the default document profile, with reading and safe editing paths for equations, Mermaid, and frontmatter. Less common extensions that cannot be converted safely remain available as source in Source mode or the local block source editor.
 
 ## Build from source
 

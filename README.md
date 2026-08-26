@@ -73,7 +73,7 @@ Word for Markdown 接上这段本地体验。它打开 `.md` / `.markdown` 后�
 
 ## 下载与安装
 
-前往 [Releases](https://github.com/CheaperjamRen/Word-for-Markdown/releases/latest) 下载 `Word-for-Markdown_0.1.0_x64-setup.exe`。
+前往 [Releases](https://github.com/CheaperjamRen/Word-for-Markdown/releases/latest) 下载 `Word-for-Markdown_0.1.1_x64-setup.exe`。
 
 安装程序支持简体中文与 English，采用当前 Windows 用户安装方式。安装后的应用名称显示为“Markdown 文档”。你可以从应用内打开文件，也可以在 Windows 中把它选择为 `.md` / `.markdown` 的默认打开方式。
 
@@ -88,7 +88,7 @@ Word for Markdown 接上这段本地体验。它打开 `.md` / `.markdown` 后�
 
 ## 当前版本范围
 
-v0.1.0 首先支持 Windows 10/11 x64 与本地 `.md` / `.markdown` 文件。标准 GFM 是默认文档协议；数学公式、Mermaid 和 frontmatter 提供阅读与安全编辑路径。少见或无法可靠转换的扩展语法会保留为源码，适合在源码模式或局部源码编辑器中处理。
+v0.1.1 支持 Windows 10/11 x64 与本地 `.md` / `.markdown` 文件。标准 GFM 是默认文档协议；数学公式、Mermaid 和 frontmatter 提供阅读与安全编辑路径。少见或无法可靠转换的扩展语法会保留为源码，适合在源码模式或局部源码编辑器中处理。
 
 ## 从源码构建
 
