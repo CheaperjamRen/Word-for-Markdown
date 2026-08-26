@@ -155,11 +155,11 @@ describe("desktop document shell", () => {
       readFileSync(resolve(root, "index.html"), "utf8"),
       readFileSync(resolve(root, "README.md"), "utf8"),
     ].join("\n");
-    expect(packageJson).toMatchObject({ name: "markdown-document-app", version: "0.1.0" });
+    expect(packageJson).toMatchObject({ name: "markdown-document-app", version: "0.1.1" });
     expect(cargo).toContain('name = "markdown-document-app"');
     expect(cargo).toContain('name = "markdown_document_app_lib"');
     expect(config).toMatchObject({
-      productName: "Markdown 文档", version: "0.1.0", identifier: "app.markdown-document",
+      productName: "Markdown 文档", version: "0.1.1", identifier: "app.markdown-document",
       app: { windows: [{ title: "Markdown 文档" }] },
     });
     expect(runtime).toContain("markdown_document_app_lib");
