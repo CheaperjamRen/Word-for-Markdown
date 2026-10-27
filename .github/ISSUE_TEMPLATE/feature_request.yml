@@ -1,0 +1,42 @@
+name: 💡 功能建议 / Feature request
+description: 希望新增或改进的功能 / Suggest an improvement
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        项目聚焦“把本地 `.md` 当作文档来读和改”。知识库、同步、插件系统等方向请先在 Issue 中讨论。
+        The project focuses on reading and editing a local `.md` file as a document.
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 你在读或改什么文档 / What are you reading or editing?
+      description: 例如：Agent 生成的调研报告、项目 README、带大量表格的规范 / e.g. an agent report, a README, a spec with many tables
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 现在卡在哪里 / What gets in the way today?
+      placeholder: 每次想把文档发给不用 Markdown 的同事，都要另开工具导出 PDF。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你希望怎样解决 / What would you like to happen?
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 现在的替代做法 / Current workaround or other tools
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: 参与 / Contribution
+      options:
+        - label: 我愿意提交 PR 实现它 / I'd like to submit a PR for this

@@ -1,0 +1,85 @@
+name: 🐛 Bug 报告 / Bug report
+description: 应用出现错误、崩溃，或文件没有按预期保存 / Something is broken
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请先搜索是否已有相同 Issue。安全问题请按 [SECURITY.md](https://github.com/CheaperjamRen/Word-for-Markdown/blob/main/SECURITY.md) 私下报告。
+        Thanks for reporting! Please search existing issues first. Report security issues privately.
+
+  - type: input
+    id: app-version
+    attributes:
+      label: 应用版本 / App version
+      description: 菜单 **帮助 → 关于** 中显示的版本 / Shown in Help → About
+      placeholder: "0.1.1"
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows 版本 / Windows version
+      description: 按 Win+R 输入 `winver` 查看 / Run `winver`
+      placeholder: "Windows 11 23H2 (22631.4317)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 出现在哪个视图 / Which view
+      multiple: true
+      options:
+        - 阅读 / Reading
+        - 富文本 / Rich Text
+        - 源码 / Source
+        - 打开或保存文件 / Opening or saving
+        - 安装或文件关联 / Installer or file association
+        - 其他 / Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      placeholder: |
+        1. 打开附件中的 example.md
+        2. 切换到富文本，修改第二个表格的单元格
+        3. 按 Ctrl+S
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果与实际结果 / Expected vs. actual
+      placeholder: 期望只改动那个单元格；实际整张表的对齐符号都被改写了。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: data-loss
+    attributes:
+      label: 是否导致文件内容被改动或丢失 / Did it change or lose file content?
+      options:
+        - 否 / No
+        - 是，未编辑的部分被改动 / Yes, unedited content changed
+        - 是，内容丢失或文件损坏 / Yes, content lost or file corrupted
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: 能复现的 Markdown 文件 / Sample Markdown
+      description: |
+        把 `.md` 文件拖进这里，或粘贴最小片段（可删减敏感内容）。如果和换行、BOM 或编码有关，请上传文件而不是粘贴。
+        Attach the `.md` file or paste a minimal snippet. Upload the file if line endings, BOM, or encoding matter.
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 截图或其他信息 / Screenshots or other context

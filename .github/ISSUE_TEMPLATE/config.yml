@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 安全问题 / Security vulnerability
+    url: https://github.com/CheaperjamRen/Word-for-Markdown/security/advisories/new
+    about: 请私下报告，不要公开提 Issue / Please report privately
+  - name: 📖 使用说明与常见问题 / README & FAQ
+    url: https://github.com/CheaperjamRen/Word-for-Markdown#常见问题
+    about: 安装、SmartScreen 提示、文件关联等常见问题 / Install, SmartScreen, file association
