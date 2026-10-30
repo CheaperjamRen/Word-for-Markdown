@@ -23,7 +23,35 @@ export function headingId(value: string): string {
   return text || "heading";
 }
 
+// Outline parsing is a full scan of the document; several views (outline pane,
+// reading view, first preview, shell) ask for the same text in one frame.
+// Cache the last few results so they share a single parse. Callers treat the
+// result as read-only.
+const OUTLINE_CACHE_LIMIT = 4;
+const outlineCache = new Map<string, OutlineItem[]>();
+
 export function buildOutline(markdown: string): OutlineItem[] {
+  const cached = outlineCache.get(markdown);
+  if (cached) {
+    outlineCache.delete(markdown);
+    outlineCache.set(markdown, cached);
+    return cached;
+  }
+  const result = parseOutline(markdown);
+  outlineCache.set(markdown, result);
+  if (outlineCache.size > OUTLINE_CACHE_LIMIT) {
+    const oldest = outlineCache.keys().next().value;
+    if (oldest !== undefined) outlineCache.delete(oldest);
+  }
+  return result;
+}
+
+/** Cheap check used by chrome that only needs to know whether any heading exists. */
+export function hasOutline(markdown: string): boolean {
+  return buildOutline(markdown).length > 0;
+}
+
+function parseOutline(markdown: string): OutlineItem[] {
   const source = markdown.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const lines = source.split("\n");
   const lineOffsets = [0];

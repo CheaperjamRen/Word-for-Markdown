@@ -29,7 +29,7 @@ import { OutlinePane } from "./OutlinePane";
 import { LocalResourcePreview } from "../../preview/LocalResourcePreview";
 import { ConflictDialog } from "./ConflictDialog";
 import { RecoveryDialog } from "./RecoveryDialog";
-import { buildOutline, headingId } from "../../markdown/outline";
+import { hasOutline, headingId } from "../../markdown/outline";
 import type { ResolvedTarget } from "../../desktop/target-resolver";
 import type { DocumentLayout } from "../../document/layout";
 import type { DocumentZoomMode } from "../../document/zoom";
@@ -110,7 +110,7 @@ export function AppShell({
   const activeDocument = active?.kind === "document" ? active : null;
   const recoveryDrafts = controller.recoveryDrafts ?? [];
   const activeExternal = activeDocument?.externalChange;
-  const showOutline = Boolean(activeDocument?.mode === "reading" && buildOutline(activeDocument.candidate.text).length > 0);
+  const showOutline = Boolean(activeDocument?.mode === "reading" && hasOutline(activeDocument.candidate.text));
   const mountFormatToolbar = toolbarVisible && !focusReading;
   const showFormatToolbar = mountFormatToolbar && (
     activeDocument?.mode !== "reading" || readingSelection !== null

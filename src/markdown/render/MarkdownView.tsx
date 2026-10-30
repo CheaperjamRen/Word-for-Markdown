@@ -1,5 +1,6 @@
 import {
   createElement,
+  memo,
   useEffect,
   useId,
   useMemo,
@@ -10,7 +11,7 @@ import {
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Highlight, themes, type Language } from "prism-react-renderer";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -169,9 +170,18 @@ function MermaidBlock({
   );
 }
 
-export function MarkdownView({ markdown, onOpenLink, documentPath, blockViewSpans = [], readingTheme = "soft-white" }: MarkdownViewProps) {
+const NO_SPANS: readonly BlockViewSpan[] = [];
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkLenientInlineMarkdown];
+
+export const MarkdownView = memo(function MarkdownView({
+  markdown,
+  onOpenLink,
+  documentPath,
+  blockViewSpans = NO_SPANS,
+  readingTheme = "soft-white",
+}: MarkdownViewProps) {
   const { t } = useLocale();
-  const { frontmatter, body, bodyOffset } = splitFrontmatter(markdown);
+  const { frontmatter, body, bodyOffset } = useMemo(() => splitFrontmatter(markdown), [markdown]);
   const outline = useMemo(() => buildOutline(markdown), [markdown]);
   const headingIdsByOffset = useMemo(
     () => new Map(outline.map((item) => [item.sourceOffset, item.id])),
@@ -216,30 +226,96 @@ export function MarkdownView({ markdown, onOpenLink, documentPath, blockViewSpan
       };
     };
   }, [blockViewSpans]);
-  const sourceProps = (node: {
-    position?: { start?: { offset?: number }; end?: { offset?: number } };
-  } | undefined): HTMLAttributes<HTMLElement> => {
-    const start = node?.position?.start?.offset;
-    const end = node?.position?.end?.offset;
-    if (start === undefined || end === undefined) return {};
-    const absoluteStart = bodyOffset + start;
-    const absoluteEnd = bodyOffset + end;
-    const span = blockViewSpansByRange.get(`${absoluteStart}:${absoluteEnd}`);
-    return span ? {
-      "data-block-view-key": span.blockViewKey,
-      "data-source-view-start": span.start,
-      "data-source-view-end": span.end,
-    } as HTMLAttributes<HTMLElement> : {};
-  };
-  const heading = (
-    level: number,
-    node: { position?: { start?: { offset?: number }; end?: { offset?: number } } } | undefined,
-    rest: Record<string, unknown>,
-  ) => {
-    const start = node?.position?.start?.offset;
-    const id = start === undefined ? undefined : headingIdsByOffset.get(bodyOffset + start);
-    return createElement(`h${level}`, { ...sourceProps(node), ...rest, id });
-  };
+  const rehypePlugins = useMemo(() => [rehypeKatex, mathLocationHooks], [mathLocationHooks]);
+  // Stable renderer map: a new function identity per render would make react-markdown
+  // remount every code block, diagram and table on each parent update (e.g. scrolling).
+  const components = useMemo<Components>(() => {
+    const sourceProps = (node: {
+      position?: { start?: { offset?: number }; end?: { offset?: number } };
+    } | undefined): HTMLAttributes<HTMLElement> => {
+      const start = node?.position?.start?.offset;
+      const end = node?.position?.end?.offset;
+      if (start === undefined || end === undefined) return {};
+      const absoluteStart = bodyOffset + start;
+      const absoluteEnd = bodyOffset + end;
+      const span = blockViewSpansByRange.get(`${absoluteStart}:${absoluteEnd}`);
+      return span ? {
+        "data-block-view-key": span.blockViewKey,
+        "data-source-view-start": span.start,
+        "data-source-view-end": span.end,
+      } as HTMLAttributes<HTMLElement> : {};
+    };
+    const heading = (
+      level: number,
+      node: { position?: { start?: { offset?: number }; end?: { offset?: number } } } | undefined,
+      rest: Record<string, unknown>,
+    ) => {
+      const start = node?.position?.start?.offset;
+      const id = start === undefined ? undefined : headingIdsByOffset.get(bodyOffset + start);
+      return createElement(`h${level}`, { ...sourceProps(node), ...rest, id });
+    };
+    return {
+      h1: ({ node, ...rest }) => heading(1, node, rest),
+      h2: ({ node, ...rest }) => heading(2, node, rest),
+      h3: ({ node, ...rest }) => heading(3, node, rest),
+      h4: ({ node, ...rest }) => heading(4, node, rest),
+      h5: ({ node, ...rest }) => heading(5, node, rest),
+      h6: ({ node, ...rest }) => heading(6, node, rest),
+      p: ({ node, ...rest }) => <p {...sourceProps(node)} {...rest} />,
+      blockquote: ({ node, ...rest }) => <blockquote className="markdown-quote" {...sourceProps(node)} {...rest} />,
+      ul: ({ node, ...rest }) => <ul {...sourceProps(node)} {...rest} />,
+      ol: ({ node, ...rest }) => <ol {...sourceProps(node)} {...rest} />,
+      hr: ({ node, ...rest }) => <hr {...sourceProps(node)} {...rest} />,
+      a: ({ href, children }) => (
+        <a
+          aria-disabled={onOpenLink ? undefined : true}
+          className={onOpenLink ? undefined : "markdown-link--disabled"}
+          href={href}
+          onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+            event.preventDefault();
+            if (href) onOpenLink?.(href);
+          }}
+          tabIndex={onOpenLink ? undefined : -1}
+        >
+          {children}
+        </a>
+      ),
+      code: ({ children, className, node }) => {
+        const code = String(children);
+        const language = /language-([^\s]+)/.exec(className ?? "")?.[1] ?? "";
+        const fenced = Boolean(language) || code.endsWith("\n");
+        if (!fenced) return <code>{children}</code>;
+        if (language.toLowerCase() === "mermaid") {
+          return <MermaidBlock
+            readingTheme={readingTheme}
+            source={code.replace(/\n$/, "")}
+            sourceProps={sourceProps(node) as HTMLAttributes<HTMLDivElement>}
+          />;
+        }
+        return <CodeBlock
+          code={code}
+          language={language}
+          readingTheme={readingTheme}
+          sourceProps={sourceProps(node) as HTMLAttributes<HTMLDivElement>}
+        />;
+      },
+      pre: ({ children }) => <>{children}</>,
+      img: ({ src, alt }) => {
+        const localPath = documentPath && src ? resolveRelativeWindowsPath(documentPath, src) : null;
+        let resolvedSrc = src;
+        if (localPath) {
+          try { resolvedSrc = convertFileSrc(localPath); } catch { resolvedSrc = src; }
+        }
+        return <img className="markdown-image" src={resolvedSrc} alt={alt ?? ""} loading="lazy" decoding="async" />;
+      },
+      table: ({ children, node }) => (
+        <div className="markdown-table-wrap" {...sourceProps(node)}>
+          <table>{children}</table>
+        </div>
+      ),
+      input: ({ node: _node, ...props }) => <input {...props} />,
+    };
+  }, [blockViewSpansByRange, bodyOffset, documentPath, headingIdsByOffset, onOpenLink, readingTheme]);
 
   return (
     <div className="markdown-view" data-reading-render-ready="true" data-testid="markdown-view">
@@ -255,74 +331,14 @@ export function MarkdownView({ markdown, onOpenLink, documentPath, blockViewSpan
       ) : null}
 
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkLenientInlineMarkdown]}
-        rehypePlugins={[rehypeKatex, mathLocationHooks]}
-        components={{
-          h1: ({ node, ...rest }) => heading(1, node, rest),
-          h2: ({ node, ...rest }) => heading(2, node, rest),
-          h3: ({ node, ...rest }) => heading(3, node, rest),
-          h4: ({ node, ...rest }) => heading(4, node, rest),
-          h5: ({ node, ...rest }) => heading(5, node, rest),
-          h6: ({ node, ...rest }) => heading(6, node, rest),
-          p: ({ node, ...rest }) => <p {...sourceProps(node)} {...rest} />,
-          blockquote: ({ node, ...rest }) => <blockquote className="markdown-quote" {...sourceProps(node)} {...rest} />,
-          ul: ({ node, ...rest }) => <ul {...sourceProps(node)} {...rest} />,
-          ol: ({ node, ...rest }) => <ol {...sourceProps(node)} {...rest} />,
-          hr: ({ node, ...rest }) => <hr {...sourceProps(node)} {...rest} />,
-          a: ({ href, children }) => (
-            <a
-              aria-disabled={onOpenLink ? undefined : true}
-              className={onOpenLink ? undefined : "markdown-link--disabled"}
-              href={href}
-              onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-                event.preventDefault();
-                if (href) onOpenLink?.(href);
-              }}
-              tabIndex={onOpenLink ? undefined : -1}
-            >
-              {children}
-            </a>
-          ),
-          code: ({ children, className, node }) => {
-            const code = String(children);
-            const language = /language-([^\s]+)/.exec(className ?? "")?.[1] ?? "";
-            const fenced = Boolean(language) || code.endsWith("\n");
-            if (!fenced) return <code>{children}</code>;
-            if (language.toLowerCase() === "mermaid") {
-              return <MermaidBlock
-                readingTheme={readingTheme}
-                source={code.replace(/\n$/, "")}
-                sourceProps={sourceProps(node) as HTMLAttributes<HTMLDivElement>}
-              />;
-            }
-            return <CodeBlock
-              code={code}
-              language={language}
-              readingTheme={readingTheme}
-              sourceProps={sourceProps(node) as HTMLAttributes<HTMLDivElement>}
-            />;
-          },
-          pre: ({ children }) => <>{children}</>,
-          img: ({ src, alt }) => {
-            const localPath = documentPath && src ? resolveRelativeWindowsPath(documentPath, src) : null;
-            let resolvedSrc = src;
-            if (localPath) {
-              try { resolvedSrc = convertFileSrc(localPath); } catch { resolvedSrc = src; }
-            }
-            return <img className="markdown-image" src={resolvedSrc} alt={alt ?? ""} loading="lazy" decoding="async" />;
-          },
-          table: ({ children, node }) => (
-            <div className="markdown-table-wrap" {...sourceProps(node)}>
-              <table>{children}</table>
-            </div>
-          ),
-          input: ({ node: _node, ...props }) => <input {...props} />,
-        }}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={rehypePlugins}
+        components={components}
       >
         {body}
       </ReactMarkdown>
     </div>
   );
-}
+});
 
 export default MarkdownView;

@@ -1,4 +1,4 @@
-import { createElement, type ReactElement } from "react";
+import { createElement, memo, type ReactElement } from "react";
 
 import type { BlockViewSpan, SourceBlock, SourceDocument } from "../../contracts/markdown";
 import { deletionSourceRunsForBlock } from "../inline-profile";
@@ -163,9 +163,11 @@ function renderBlock(block: PreviewBlock, span: BlockViewSpan | undefined, headi
   return <p key={block.id} {...sourceProps}>{block.text}</p>;
 }
 
-export function FirstReadablePreview({
+const NO_SPANS: readonly BlockViewSpan[] = [];
+
+export const FirstReadablePreview = memo(function FirstReadablePreview({
   document,
-  blockViewSpans = [],
+  blockViewSpans = NO_SPANS,
 }: {
   document: SourceDocument;
   blockViewSpans?: readonly BlockViewSpan[];
@@ -213,4 +215,4 @@ export function FirstReadablePreview({
       ) : null}
     </div>
   );
-}
+});

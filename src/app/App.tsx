@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import type { HostApi } from "../contracts/desktop";
 import type { BlockViewSpan } from "../contracts/markdown";
@@ -123,7 +123,7 @@ export default function App({
     };
   }, [active?.id, activeEnhanced, activeMode, activePath, host]);
 
-  const renderDocument = (
+  const renderDocument = useCallback((
     tab: DocumentSession,
     blockViewSpans: readonly BlockViewSpan[],
     onOpenLink?: (href: string) => void,
@@ -142,7 +142,7 @@ export default function App({
         />
       </Suspense>
     );
-  };
+  }, [enhancedTabs]);
 
   return (
     <LocaleProvider installerHint={installerHint}>
