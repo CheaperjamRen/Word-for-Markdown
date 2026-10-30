@@ -782,7 +782,7 @@ button { color: inherit; font: inherit; }
 .empty-state__recent-row:hover .empty-state__recent-remove,
 .empty-state__recent-row:focus-within .empty-state__recent-remove,
 .empty-state__recent-row--context .empty-state__recent-remove { opacity: 1; }
-.empty-state__recent-remove:hover { color: var(--danger); background: #f8eeee; }
+.empty-state__recent-remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .empty-state__recent-remove:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; opacity: 1; }
 .empty-state__history-empty { margin: 0 4px; padding: 22px 0; color: var(--text-tertiary); font-size: 12px; }
 @media (max-width: 759px) {
@@ -891,7 +891,7 @@ button { color: inherit; font: inherit; }
   text-align: left;
 }
 .settings-dialog__nav button:hover { background: var(--line-subtle); }
-.settings-dialog__nav button[aria-current="page"] { color: var(--accent-pressed); background: var(--selection-soft); font-weight: 600; }
+.settings-dialog__nav button[aria-current="page"] { color: var(--accent-pressed); background: var(--accent-selected); font-weight: 600; }
 .settings-dialog__panel { padding: 24px; }
 .settings-dialog__panel fieldset { margin: 0; border: 0; padding: 0; }
 .settings-dialog__panel legend { padding: 0; font-size: 15px; font-weight: 650; }
@@ -947,6 +947,260 @@ button { color: inherit; font: inherit; }
   .statusbar__layout-control select { max-width: 82px; }
   .document-surface--source { padding: 0; }
 }
+
+/* ===== 视觉统一层：圆角、阴影、按钮、浮层统一使用 ui-tokens 中的变量 ===== */
+
+/* 交互反馈：所有界面控件使用相同的过渡节奏 */
+.toolbar-button,
+.menu-bar__trigger,
+.menu-item,
+.document-tab,
+.document-tab__close,
+.document-tabs__new,
+.document-tabs__focus-control button,
+.outline-pane__item,
+.outline-pane__header button,
+.outline-reveal,
+.find-bar button,
+.statusbar__zoom-control button,
+.statusbar__layout-control select,
+.settings-dialog__nav button,
+.settings-dialog__option,
+.recovery-dialog__item-actions button,
+.conflict-dialog__actions button,
+.link-panel__actions button,
+.dialog button,
+.empty-state button,
+.empty-state__recent-open,
+.empty-state__recent-remove,
+.markdown-code-copy {
+  transition:
+    background-color var(--motion-hover) ease-out,
+    border-color var(--motion-hover) ease-out,
+    color var(--motion-hover) ease-out,
+    box-shadow var(--motion-overlay) ease-out,
+    opacity var(--motion-overlay) ease-out,
+    transform var(--motion-hover) ease-out;
+}
+.toolbar-button:active:not(:disabled),
+.document-tabs__new:active:not(:disabled),
+.document-tab__close:active,
+.find-bar button:active:not(:disabled),
+.outline-pane__header button:active,
+.statusbar__zoom-control button:active:not(:disabled) { transform: scale(0.94); }
+
+/* 标签栏：非激活标签也有悬停反馈，激活下划线展开出现 */
+.document-tab:not(.document-tab--active):hover { color: var(--text-primary); background: color-mix(in srgb, var(--chrome-raised) 60%, transparent); }
+.document-tab--active::after { border-radius: 2px 2px 0 0; animation: tab-indicator-in var(--motion-dialog) var(--ease-out); }
+.document-tab__close { color: var(--text-tertiary); }
+.document-tab__close:hover { color: var(--text-primary); }
+.document-tabs__mode-control { border-radius: calc(var(--radius-segment) + 3px); }
+.document-tabs__mode-control button,
+.document-tabs__focus-control button { border-radius: var(--radius-segment); }
+.document-tabs__focus-control button:active { background: var(--accent-subtle); }
+
+/* 菜单栏：触发器改为内缩的圆角块，与工具栏按钮一致 */
+.menu-bar__trigger {
+  height: calc(100% - 4px);
+  margin-top: 2px;
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+}
+.menu-bar__trigger[aria-expanded="true"] { color: var(--accent-pressed); background: var(--accent-subtle); }
+.menu-item { border-radius: var(--radius-control); }
+.menu-item:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--accent-pressed); }
+.menu-item:hover:not(:disabled):not([aria-disabled="true"]) kbd { color: var(--text-secondary); }
+.menu-item kbd { font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+
+/* 浮层：菜单、查找栏、链接面板统一圆角与阴影 */
+.menu-popover,
+.link-panel,
+.find-bar {
+  border-color: var(--line);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+.menu-popover { padding: 5px; }
+.find-bar input,
+.link-panel__field input { border-radius: var(--radius-control); }
+.find-bar input:focus-visible,
+.link-panel__field input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 26%, transparent);
+}
+.find-bar input,
+.link-panel__field input { transition: border-color var(--motion-hover) ease-out, box-shadow var(--motion-overlay) ease-out; }
+.find-bar__count { font-variant-numeric: tabular-nums; text-align: center; }
+.workspace__link-error { border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); }
+
+/* 按钮：对话框、空状态、链接面板、冲突与恢复对话框共用一套次要/主要按钮 */
+.dialog__actions button,
+.empty-state__actions button,
+.conflict-dialog__actions button,
+.link-panel__actions button {
+  min-height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 0 14px;
+  color: var(--text-primary);
+  background: var(--chrome-raised);
+  box-shadow: var(--shadow-control);
+  cursor: pointer;
+}
+.dialog__actions button:hover,
+.empty-state__actions button:hover,
+.conflict-dialog__actions button:hover,
+.link-panel__actions button:hover { border-color: var(--line-strong); background: var(--line-subtle); }
+.dialog__actions button:active,
+.empty-state__actions button:active,
+.conflict-dialog__actions button:active,
+.link-panel__actions button:active { background: var(--line); box-shadow: none; }
+.dialog__actions .dialog__primary,
+.empty-state__actions .empty-state__primary,
+.conflict-dialog__actions .dialog__primary,
+.link-panel__actions button[type="submit"] { border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
+.dialog__actions .dialog__primary:hover,
+.empty-state__actions .empty-state__primary:hover,
+.conflict-dialog__actions .dialog__primary:hover,
+.link-panel__actions button[type="submit"]:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+.dialog__actions .dialog__primary:active,
+.empty-state__actions .empty-state__primary:active,
+.conflict-dialog__actions .dialog__primary:active,
+.link-panel__actions button[type="submit"]:active { border-color: var(--accent-pressed); background: var(--accent-pressed); }
+.conflict-dialog__actions button:focus-visible,
+.link-panel__actions button:focus-visible,
+.recovery-dialog__item-actions button:focus-visible,
+.settings-dialog__nav button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.recovery-dialog__item-actions button { border-radius: var(--radius-control); }
+.recovery-dialog__item-actions .recovery-dialog__discard:hover { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--paper)); }
+
+/* 对话框：统一卡片、遮罩、标题层级 */
+.dialog-backdrop,
+.conflict-dialog { background: var(--backdrop); }
+.dialog,
+.conflict-dialog__card {
+  border-color: var(--line);
+  border-radius: var(--radius-overlay);
+  background: var(--chrome-raised);
+  box-shadow: var(--shadow-dialog);
+}
+.dialog h2,
+.conflict-dialog__card h2 { color: var(--text-primary); font-size: 16px; font-weight: 650; line-height: 24px; }
+.dialog p,
+.conflict-dialog__card p { line-height: 1.6; }
+.recovery-dialog__header,
+.settings-dialog__header { background: var(--chrome-raised); }
+.recovery-dialog__header p { color: var(--text-secondary); }
+.recovery-dialog__item:last-child { border-bottom: 0; }
+.recovery-dialog__item:hover { background: color-mix(in srgb, var(--accent-subtle) 50%, transparent); }
+.recovery-dialog__footer,
+.settings-dialog__footer { border-top: 1px solid var(--line); background: var(--chrome); }
+
+/* 设置对话框：修正未定义的选中色变量，选项卡片有清晰的选中态 */
+.settings-dialog__nav button { margin-bottom: 2px; }
+.settings-dialog__option:has(input:checked) { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent-pressed); font-weight: 600; }
+.settings-dialog__option:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.settings-dialog__theme-swatch { border-radius: var(--radius-control); }
+
+/* 大纲：悬停与激活态与菜单保持同一语言 */
+.outline-pane__header { letter-spacing: 0.02em; }
+.outline-pane__item { border-left: 0; }
+.outline-pane__item--active { box-shadow: inset 2px 0 0 var(--accent); }
+.app-shell[data-reading-theme] .outline-pane__item--active { box-shadow: inset 2px 0 0 var(--reader-link); }
+.outline-reveal { border-radius: var(--radius-segment); box-shadow: var(--shadow-overlay); }
+
+/* 文档纸张：统一阴影，夜间主题自动使用更深的阴影 */
+.document-paper,
+.document-paper[data-reading-theme],
+.document-paper[data-reading-theme="night"] { box-shadow: var(--shadow-paper); }
+.document-paper--canvas,
+.document-paper--canvas[data-reading-theme] { box-shadow: none; }
+.document-paper { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+
+/* 起始页：最近文档卡片悬停有轻微抬升 */
+.empty-state__recent-open:hover,
+.empty-state__recent-row--context .empty-state__recent-open { box-shadow: var(--shadow-control); }
+.empty-state__recent-remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.empty-state__icon { color: var(--accent); opacity: 0.85; }
+
+/* 状态栏：数字等宽，下拉框有悬停态 */
+.statusbar { font-variant-numeric: tabular-nums; }
+.statusbar__layout-control select { cursor: pointer; }
+.statusbar__layout-control select:hover { border-color: var(--line-strong); color: var(--text-primary); }
+.statusbar__save-state--saved { color: var(--success); }
+
+/* 滚动条：全局细滚动条，颜色随主题 */
+.document-viewport,
+.document-tabs__scroll,
+.recovery-dialog__list,
+.toolbar-overflow__menu {
+  scrollbar-color: color-mix(in srgb, var(--text-tertiary) 55%, transparent) transparent;
+  scrollbar-width: thin;
+}
+.document-viewport::-webkit-scrollbar { width: 10px; height: 10px; }
+.document-viewport::-webkit-scrollbar-track { background: transparent; }
+.document-viewport::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-tertiary) 50%, transparent) padding-box;
+}
+.document-viewport::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text-secondary) 70%, transparent); }
+
+/* 界面外框不随双击选中文字 */
+.document-tabs,
+.menu-bar,
+.format-toolbar,
+.statusbar,
+.outline-pane__header { -webkit-user-select: none; user-select: none; }
+
+/* 浮层淡入，不再突然弹出 */
+.menu-popover,
+.toolbar-overflow__menu,
+.toolbar-style__menu { animation: popover-in var(--motion-overlay) var(--ease-out); transform-origin: top left; }
+.toolbar-overflow__menu { transform-origin: top right; }
+.dialog-backdrop,
+.conflict-dialog { animation: backdrop-in var(--motion-dialog) ease-out; }
+.dialog,
+.conflict-dialog__card { animation: dialog-in var(--motion-dialog) var(--ease-out); }
+.find-bar,
+.link-panel { animation: popover-in var(--motion-overlay) var(--ease-out); }
+
+/* 滚动：滚轮惯性留在当前面板内 */
+.document-viewport,
+.outline-pane__list { overscroll-behavior: contain; }
+.document-tabs__scroll { scroll-behavior: smooth; }
+
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes tab-indicator-in {
+  from { transform: scaleX(0.3); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.link-panel__actions button:disabled,
+.link-panel__actions button[type="submit"]:disabled { border-color: var(--line); color: var(--text-tertiary); background: var(--chrome); box-shadow: none; cursor: default; }
 
 @media (forced-colors: active) {
   .document-tabs__mode-control button[aria-pressed="true"] {

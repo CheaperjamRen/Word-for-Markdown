@@ -146,7 +146,7 @@ export function FindBar({
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
-    match.startNode.parentElement?.scrollIntoView?.({ block: "nearest" });
+    match.startNode.parentElement?.scrollIntoView?.({ block: "center" });
   }, [current, matches]);
 
   const move = (delta: number) => {

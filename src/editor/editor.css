@@ -15,7 +15,7 @@
 
 .rich-object-shell--selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgb(55 103 148 / 14%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .rich-object-shell--dragging { opacity: .62; }
@@ -34,7 +34,7 @@
   padding: 0;
   color: var(--text-secondary);
   background: var(--paper);
-  box-shadow: 0 2px 7px rgb(20 30 40 / 10%);
+  box-shadow: var(--shadow-overlay);
   cursor: grab;
   touch-action: none;
   user-select: none;
