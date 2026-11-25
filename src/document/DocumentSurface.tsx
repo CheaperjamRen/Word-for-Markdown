@@ -54,7 +54,11 @@ export interface DocumentSurfaceProps {
   tab: DocumentSession;
   layout?: DocumentLayout;
   zoomMode?: DocumentZoomMode;
-  renderReading(blockViewSpans: ReturnType<typeof buildBlockViewSpans>, onOpenLink?: (href: string) => void): ReactNode;
+  renderReading(
+    blockViewSpans: ReturnType<typeof buildBlockViewSpans>,
+    onOpenLink?: (href: string) => void,
+    tab?: DocumentSession,
+  ): ReactNode;
   onOpenLink?: (href: string) => void;
   readingPreferences?: ReadingPreferences;
 }
@@ -79,6 +83,19 @@ export const DocumentSurface = memo(function DocumentSurface({
   const [viewportWidth, setViewportWidth] = useState(0);
   const restoringReadingRef = useRef(false);
   const readingRestoreTokenRef = useRef(0);
+  const restoredScrollTopRef = useRef<number | null>(null);
+  const echoedReadingAnchorRef = useRef<{
+    tabId: string;
+    revision: number;
+    blockViewKey: string | null;
+    offset: number;
+  } | null>(null);
+  const previousRestoreContextRef = useRef<{
+    tabId: string;
+    mode: DocumentSession["mode"];
+    sourceView: typeof sourceView;
+    blockViewSpans: typeof blockViewSpans;
+  } | null>(null);
   const pendingReadingPositionRef = useRef<{
     canonicalPath: string;
     sourceOffset: number;
@@ -109,6 +126,9 @@ export const DocumentSurface = memo(function DocumentSurface({
       tab.viewState.scrollAnchor !== null ||
       persistentReadingPath === null
     ) return null;
+    if (pendingReadingPositionRef.current?.canonicalPath === persistentReadingPath) {
+      return pendingReadingPositionRef.current.sourceOffset;
+    }
     return readReadingPosition(persistentReadingPath)?.sourceOffset ?? null;
   }, [tab.id, tab.mode, tab.viewState.scrollAnchor, persistentReadingPath]);
   const initialSelection = useMemo(
@@ -200,9 +220,45 @@ export const DocumentSurface = memo(function DocumentSurface({
   }, [tab.id, tab.mode]);
 
   useLayoutEffect(() => {
+    const prevContext = previousRestoreContextRef.current;
+    previousRestoreContextRef.current = {
+      tabId: tab.id,
+      mode: tab.mode,
+      sourceView,
+      blockViewSpans,
+    };
+    if (tab.mode !== "reading") {
+      echoedReadingAnchorRef.current = null;
+      restoredScrollTopRef.current = null;
+      readingRestoreTokenRef.current += 1;
+      restoringReadingRef.current = false;
+      return;
+    }
+    const sameReadingContext = Boolean(
+      prevContext &&
+      prevContext.tabId === tab.id &&
+      prevContext.mode === "reading" &&
+      prevContext.sourceView === sourceView &&
+      prevContext.blockViewSpans === blockViewSpans,
+    );
+    const echoed = echoedReadingAnchorRef.current;
+    const anchor = tab.viewState.scrollAnchor;
+    if (
+      sameReadingContext &&
+      echoed &&
+      echoed.tabId === tab.id &&
+      echoed.revision === tab.revision &&
+      echoed.blockViewKey === (anchor?.blockViewKey ?? null) &&
+      echoed.offset === anchor?.offset
+    ) {
+      echoedReadingAnchorRef.current = null;
+      return;
+    }
+    echoedReadingAnchorRef.current = null;
+    restoredScrollTopRef.current = null;
     const restoreToken = ++readingRestoreTokenRef.current;
     restoringReadingRef.current = false;
-    if (tab.mode !== "reading" || !sourceView || initialViewportOffset === null) return;
+    if (!sourceView || initialViewportOffset === null) return;
     const viewport = documentViewportRef.current;
     if (!viewport) return;
     const requestedKey = tab.viewState.scrollAnchor?.blockViewKey;
@@ -253,8 +309,13 @@ export const DocumentSurface = memo(function DocumentSurface({
       const pixelOffset = blockRect.height > 0
         ? Math.round((sourceOffset / sourceLength) * blockRect.height)
         : 0;
+      const previousScrollTop = viewport.scrollTop;
       restoringReadingRef.current = true;
       viewport.scrollTop = blockScrollTop + pixelOffset;
+      const appliedScrollTop = viewport.scrollTop;
+      if (appliedScrollTop !== previousScrollTop) {
+        restoredScrollTopRef.current = appliedScrollTop;
+      }
       queueMicrotask(() => {
         if (readingRestoreTokenRef.current === restoreToken) {
           restoringReadingRef.current = false;
@@ -276,6 +337,7 @@ export const DocumentSurface = memo(function DocumentSurface({
     return () => {
       readingRestoreTokenRef.current += 1;
       restoringReadingRef.current = false;
+      restoredScrollTopRef.current = null;
       observer?.disconnect();
     };
   }, [
@@ -290,6 +352,11 @@ export const DocumentSurface = memo(function DocumentSurface({
   const updateReadingViewport = (event: UIEvent<HTMLDivElement>) => {
     if (restoringReadingRef.current || !sourceView) return;
     const viewport = event.currentTarget;
+    if (restoredScrollTopRef.current !== null) {
+      const expected = restoredScrollTopRef.current;
+      restoredScrollTopRef.current = null;
+      if (viewport.scrollTop === expected) return;
+    }
     const viewportRect = viewport.getBoundingClientRect();
     const blocks = [...viewport.querySelectorAll<HTMLElement>("[data-block-view-key]")]
       .map((element) => ({ element, rect: element.getBoundingClientRect() }));
@@ -316,10 +383,17 @@ export const DocumentSurface = memo(function DocumentSurface({
     ) {
       offset -= 1;
     }
-    controller.updateSourceViewport(tab.id, tab.revision, {
+    const nextAnchor = {
       blockViewKey: span.blockViewKey,
       offset,
-    });
+    };
+    echoedReadingAnchorRef.current = {
+      tabId: tab.id,
+      revision: tab.revision,
+      blockViewKey: nextAnchor.blockViewKey,
+      offset: nextAnchor.offset,
+    };
+    controller.updateSourceViewport(tab.id, tab.revision, nextAnchor);
     if (persistentReadingPath) {
       scheduleReadingPosition(persistentReadingPath, span.start + offset);
     }
@@ -571,7 +645,7 @@ export const DocumentSurface = memo(function DocumentSurface({
               ref={assignDocumentPaper}
               style={paperZoomStyle}
             >
-              {renderReading(blockViewSpans, onOpenLink)}
+              {renderReading(blockViewSpans, onOpenLink, tab)}
             </article>
           </div>
         </div>

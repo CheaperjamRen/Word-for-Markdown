@@ -1174,6 +1174,200 @@ describe("DocumentSurface mode ownership", () => {
 
     expect(localStorage.getItem(READING_POSITIONS_STORAGE_KEY)).toBeNull();
   });
+
+  it("does not snap live Reading scrollTop to quantized source offsets, yet restores on mode return", () => {
+    const markdown = ["```mermaid", "graph TD", "  A-->B", "```", "", "## Section 2", ""].join("\n");
+    const candidate = parseSourceDocument(new Uint8Array(encoder.encode(markdown)));
+    const base = session("reading");
+    let currentTab: DocumentSession = {
+      ...base,
+      candidate,
+      baseline: candidate,
+      blockViewKeys: new Map(candidate.blocks.map((block, index) => [block.id, `live-${index}`])),
+    };
+    const sharedView = buildSourceView(currentTab.candidate);
+    const surfaceController = controller(currentTab);
+    surfaceController.getSourceView = vi.fn(() => sharedView);
+    const registry = createActiveSourceEditorRegistry();
+    installReadingGeometry();
+    const renderReading = (spans: ReturnType<typeof buildBlockViewSpans>) => <>
+      <div data-block-view-key={spans[0].blockViewKey} data-height="1300" data-top="100">Mermaid</div>
+      <h2 data-block-view-key={spans[1].blockViewKey} data-height="40" data-top="1420">Section 2</h2>
+    </>;
+
+    const rendered = render(<DocumentSurface
+      controller={surfaceController}
+      registry={registry}
+      tab={currentTab}
+      renderReading={renderReading}
+    />);
+    vi.mocked(surfaceController.updateSourceViewport).mockImplementation((sessionId, expectedRevision, anchor) => {
+      const next = sessionReducer({
+        tabs: [currentTab],
+        activeTabId: currentTab.id,
+        pendingOperations: new Map(),
+        writeReceipts: [],
+        pendingWatchCleanupIds: [],
+      }, { type: "source-viewport-updated", sessionId, expectedRevision, anchor });
+      currentTab = next.tabs[0] as DocumentSession;
+      rendered.rerender(<DocumentSurface
+        controller={surfaceController}
+        registry={registry}
+        tab={currentTab}
+        renderReading={renderReading}
+      />);
+    });
+
+    const viewport = rendered.container.querySelector<HTMLElement>(".document-viewport--reading")!;
+    viewport.scrollTop = 437;
+    fireEvent.scroll(viewport);
+
+    expect(currentTab.viewState.scrollAnchor?.blockViewKey).toBe("live-0");
+    expect(viewport.scrollTop).toBe(437);
+
+    rendered.rerender(<DocumentSurface
+      controller={surfaceController}
+      registry={registry}
+      tab={{ ...currentTab, mode: "rich" }}
+      renderReading={renderReading}
+    />);
+    rendered.rerender(<DocumentSurface
+      controller={surfaceController}
+      registry={registry}
+      tab={currentTab}
+      renderReading={renderReading}
+    />);
+
+    const restoredViewport = rendered.container.querySelector<HTMLElement>(".document-viewport--reading")!;
+    expect(restoredViewport.scrollTop).toBeGreaterThan(100);
+  });
+
+  it("ignores the browser frame-delayed programmatic scroll from preview clamping so enhanced Reading still reaches the target block", async () => {
+    const markdown = Array.from({ length: 15 }, (_, index) => `paragraph-${index}`).join("\n\n");
+    const candidate = parseSourceDocument(new Uint8Array(encoder.encode(markdown)));
+    const base = session("reading");
+    let currentTab: DocumentSession = {
+      ...base,
+      candidate,
+      baseline: candidate,
+      blockViewKeys: new Map(candidate.blocks.map((block, index) => [block.id, `preview-${index}`])),
+      viewState: { ...base.viewState, scrollAnchor: { blockViewKey: "preview-14", offset: 0 } },
+    };
+    const sharedView = buildSourceView(currentTab.candidate);
+    const surfaceController = controller(currentTab);
+    surfaceController.getSourceView = vi.fn(() => sharedView);
+    const registry = createActiveSourceEditorRegistry();
+    installReadingGeometry();
+
+    const PreviewThenFull = ({ spans }: { spans: ReturnType<typeof buildBlockViewSpans> }) => {
+      const [limit, setLimit] = useState(12);
+      const [noise, setNoise] = useState(0);
+      return <div data-reading-render-ready={limit === 15 ? "true" : "false"}>
+        <button onClick={() => setNoise((count) => count + 1)} type="button">mutate preview</button>
+        <button onClick={() => setLimit(15)} type="button">mount full</button>
+        {noise > 0 ? <span data-noise={noise} /> : null}
+        {spans.slice(0, limit).map((span, index) => (
+          <div data-block-view-key={span.blockViewKey} data-index={index} key={span.blockViewKey} />
+        ))}
+      </div>;
+    };
+    const renderReading = (spans: ReturnType<typeof buildBlockViewSpans>) => <PreviewThenFull spans={spans} />;
+    const rendered = render(<DocumentSurface
+      controller={surfaceController}
+      registry={registry}
+      tab={currentTab}
+      renderReading={renderReading}
+    />);
+    vi.mocked(surfaceController.updateSourceViewport).mockImplementation((sessionId, expectedRevision, anchor) => {
+      const next = sessionReducer({
+        tabs: [currentTab],
+        activeTabId: currentTab.id,
+        pendingOperations: new Map(),
+        writeReceipts: [],
+        pendingWatchCleanupIds: [],
+      }, { type: "source-viewport-updated", sessionId, expectedRevision, anchor });
+      currentTab = next.tabs[0] as DocumentSession;
+      rendered.rerender(<DocumentSurface
+        controller={surfaceController}
+        registry={registry}
+        tab={currentTab}
+        renderReading={renderReading}
+      />);
+    });
+
+    const viewport = rendered.container.querySelector<HTMLElement>(".document-viewport--reading")!;
+    expect(viewport.scrollTop).toBe(1_200);
+
+    // A same-height MutationObserver pass before the browser dispatches the first scroll frame must keep the guard armed.
+    fireEvent.click(screen.getByRole("button", { name: "mutate preview" }));
+    await Promise.resolve();
+    fireEvent.scroll(viewport);
+    expect(surfaceController.updateSourceViewport).not.toHaveBeenCalled();
+    expect(currentTab.viewState.scrollAnchor).toEqual({ blockViewKey: "preview-14", offset: 0 });
+
+    fireEvent.click(screen.getByRole("button", { name: "mount full" }));
+    await waitFor(() => expect(viewport.scrollTop).toBe(1_400));
+  });
+
+  it("restores Reading offset from unflushed pendingReadingPositionRef across external-reloaded within the 250ms debounce", () => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    installReadingGeometry();
+    const initialCandidate = parseSourceDocument(new Uint8Array(encoder.encode("# First\n\nParagraph second")));
+    const reloadedCandidate = parseSourceDocument(new Uint8Array(encoder.encode("# First\n\nParagraph second updated")));
+    const canonicalPath = "C:\\docs\\live-reload.md";
+    const base = session("reading");
+    let currentTab: DocumentSession = {
+      ...base,
+      file: { kind: "local", canonicalPath, version: { len: initialCandidate.bytes.length, modifiedMs: 1, sha256: "v1" } },
+      baseline: initialCandidate,
+      candidate: initialCandidate,
+      externalChange: { kind: "checking", watchId: "watch-1" },
+      blockViewKeys: new Map(initialCandidate.blocks.map((block, index) => [block.id, `reload-${index}`])),
+    };
+    const renderReading = (spans: ReturnType<typeof buildBlockViewSpans>) => <>
+      {spans.map((span, index) => (
+        <div data-block-view-key={span.blockViewKey} data-index={index} key={span.blockViewKey} />
+      ))}
+    </>;
+    const rendered = render(<DocumentSurface
+      controller={controller(currentTab)}
+      registry={createActiveSourceEditorRegistry()}
+      tab={currentTab}
+      renderReading={renderReading}
+    />);
+
+    const viewport = rendered.container.querySelector<HTMLElement>(".document-viewport--reading")!;
+    viewport.scrollTop = 200;
+    fireEvent.scroll(viewport);
+    expect(localStorage.getItem("markdown-document.reading-positions")).toBeNull();
+
+    const reloaded = sessionReducer({
+      tabs: [currentTab],
+      activeTabId: currentTab.id,
+      pendingOperations: new Map(),
+      writeReceipts: [],
+      pendingWatchCleanupIds: [],
+    }, {
+      type: "external-reloaded",
+      sessionId: currentTab.id,
+      expectedRevision: currentTab.revision,
+      watchId: "watch-1",
+      document: reloadedCandidate,
+      version: { len: reloadedCandidate.bytes.length, modifiedMs: 2, sha256: "v2" },
+    }).tabs[0] as DocumentSession;
+
+    expect(reloaded.revision).toBe(currentTab.revision + 1);
+    expect(reloaded.viewState.scrollAnchor).toBeNull();
+    rendered.rerender(<DocumentSurface
+      controller={controller(reloaded)}
+      registry={createActiveSourceEditorRegistry()}
+      tab={reloaded}
+      renderReading={renderReading}
+    />);
+
+    expect(viewport.scrollTop).toBe(200);
+  });
 });
 
 function withinPanel(panel: HTMLElement, selector: string): Element[] {

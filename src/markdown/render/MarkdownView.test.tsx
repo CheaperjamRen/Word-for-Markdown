@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSourceDocument } from "../source-document";
 import { buildBlockViewSpans, buildSourceView } from "../source-view";
 import { MarkdownView } from "./MarkdownView";
+import { resetMermaidSvgCacheForTests } from "./mermaid-cache";
 
 const BASIC_FIXTURE = readFileSync(
   resolve("fixtures/markdown-showcase.md"),
@@ -30,6 +31,8 @@ describe("MarkdownView", () => {
   });
 
   beforeEach(() => {
+    resetMermaidSvgCacheForTests();
+    mermaidInitialize.mockClear();
     mermaidRender.mockReset();
     mermaidRender.mockResolvedValue({ svg: "<svg></svg>" });
     delete (globalThis as { __rawHtmlExecuted?: boolean }).__rawHtmlExecuted;
@@ -235,5 +238,116 @@ describe("MarkdownView", () => {
     const paragraph = spans.find((candidate) => candidate.kind === "paragraph")!;
     expect(container.querySelector(`[data-block-view-key="${paragraph.blockViewKey}"] .katex-display`)).toBeNull();
     expect(container.querySelectorAll(".katex-display")).toHaveLength(2);
+  });
+
+  it("keeps rendered Mermaid SVG intact during async theme transitions, skips neutral-to-neutral rerenders, and hits cache on remount", async () => {
+    mermaidRender.mockResolvedValueOnce({ svg: '<svg data-variant="light"></svg>' });
+    const diagram = "```mermaid\ngraph TD\n  A-->B\n```";
+    const rendered = render(<MarkdownView markdown={diagram} readingTheme="soft-white" />);
+
+    await waitFor(() =>
+      expect(rendered.container.querySelector('.markdown-mermaid-canvas svg[data-variant="light"]')).not.toBeNull(),
+    );
+    expect(mermaidRender).toHaveBeenCalledTimes(1);
+
+    rendered.rerender(<MarkdownView markdown={diagram} readingTheme="warm-paper" />);
+    expect(mermaidRender).toHaveBeenCalledTimes(1);
+    expect(rendered.container.querySelector('.markdown-mermaid-canvas svg[data-variant="light"]')).not.toBeNull();
+
+    let resolveDark!: (value: { svg: string }) => void;
+    mermaidRender.mockImplementationOnce(
+      () => new Promise<{ svg: string }>((resolve) => { resolveDark = resolve; }),
+    );
+    rendered.rerender(<MarkdownView markdown={diagram} readingTheme="night" />);
+
+    // Previous SVG remains mounted both synchronously and while async dark render is in flight.
+    expect(rendered.container.querySelector('.markdown-mermaid-canvas svg[data-variant="light"]')).not.toBeNull();
+    await waitFor(() => expect(mermaidRender).toHaveBeenCalledTimes(2));
+    expect(rendered.container.querySelector('.markdown-mermaid-canvas svg[data-variant="light"]')).not.toBeNull();
+
+    await act(async () => {
+      resolveDark({ svg: '<svg data-variant="dark"></svg>' });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(rendered.container.querySelector('.markdown-mermaid-canvas svg[data-variant="dark"]')).not.toBeNull(),
+    );
+
+    rendered.unmount();
+    mermaidRender.mockClear();
+    const remounted = render(<MarkdownView markdown={diagram} readingTheme="soft-white" />);
+    expect(remounted.container.querySelector('.markdown-mermaid-canvas svg[data-variant="light"]')).not.toBeNull();
+    expect(mermaidRender).not.toHaveBeenCalled();
+  });
+
+  it("keeps snake_case identifiers, quoted enum unions, and method calls as inline code instead of math", () => {
+    const { container } = render(
+      <MarkdownView
+        markdown={[
+          '- TaskStatus: `"PENDING" | "RUNNING" | "WAITING_APPROVAL" | "FAILED"`',
+          "- Files: `worktree_env.py` / `git_ops.py`",
+          "- Call: `console.log(message)` and `PORT=8080` and `--mode=rpc`",
+        ].join("\n")}
+      />,
+    );
+
+    expect(container.querySelectorAll(".katex")).toHaveLength(0);
+    const codes = [...container.querySelectorAll("code")].map((node) => node.textContent);
+    expect(codes).toEqual([
+      '"PENDING" | "RUNNING" | "WAITING_APPROVAL" | "FAILED"',
+      "worktree_env.py",
+      "git_ops.py",
+      "console.log(message)",
+      "PORT=8080",
+      "--mode=rpc",
+    ]);
+  });
+
+  it("renders duplicate Mermaid blocks with distinct DOM ids across cold and cached mounts, cleans temp error nodes, and renders empty code blocks cleanly", async () => {
+    mermaidRender.mockImplementation(async (id: string) => ({
+      svg: `<svg id="${id}"><marker id="${id}-arrow"></marker></svg>`,
+    }));
+    const duplicate = ["```mermaid", "graph TD", "  A-->B", "```", "", "```mermaid", "graph TD", "  A-->B", "```"].join("\n");
+    const rendered = render(<MarkdownView markdown={duplicate} />);
+
+    await waitFor(() => expect(rendered.container.querySelectorAll(".markdown-mermaid-canvas svg")).toHaveLength(2));
+    const coldIds = [...rendered.container.querySelectorAll(".markdown-mermaid-canvas svg")].map((el) => el.id);
+    expect(coldIds[0]).toBeTruthy();
+    expect(coldIds[1]).toBeTruthy();
+    expect(coldIds[0]).not.toBe(coldIds[1]);
+
+    rendered.unmount();
+    mermaidRender.mockClear();
+    const cachedMount = render(<MarkdownView markdown={duplicate} />);
+    const cachedIds = [...cachedMount.container.querySelectorAll(".markdown-mermaid-canvas svg")].map((el) => el.id);
+    expect(cachedIds).toHaveLength(2);
+    expect(cachedIds[0]).toBeTruthy();
+    expect(cachedIds[1]).toBeTruthy();
+    expect(cachedIds[0]).not.toBe(cachedIds[1]);
+    expect(mermaidRender).not.toHaveBeenCalled();
+    cachedMount.unmount();
+
+    mermaidRender.mockImplementationOnce(async (id: string) => {
+      const orphan = document.createElement("div");
+      orphan.id = `d${id}`;
+      document.body.append(orphan);
+      throw new Error("syntax error");
+    });
+    render(<MarkdownView markdown={"```mermaid\ngraph TD\n  broken--\n```"} />);
+    expect(await screen.findByText("图表没有渲染，已保留源码。")).toBeInTheDocument();
+    expect(document.querySelector('[id^="dmarkdown-mermaid-"]')).toBeNull();
+
+    const emptyCode = render(<MarkdownView markdown={"```ts\n```\n\n```\n```"} />);
+    const blocks = emptyCode.container.querySelectorAll(".markdown-code-block");
+    expect(blocks).toHaveLength(2);
+    expect(emptyCode.container.textContent).not.toContain("undefined");
+  });
+
+  it("assigns outline-matching DOM ids to 1-3 space indented ATX headings", () => {
+    const { container } = render(<MarkdownView markdown={"  ## 缩进两格标题\n"} />);
+    const heading = container.querySelector("h2");
+    expect(heading).not.toBeNull();
+    expect(heading?.id).toBe("缩进两格标题");
+    expect(heading?.textContent).toBe("缩进两格标题");
   });
 });

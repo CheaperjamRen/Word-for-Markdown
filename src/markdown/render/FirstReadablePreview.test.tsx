@@ -204,4 +204,18 @@ describe("FirstReadablePreview", () => {
     }
     expect(container.querySelector(".katex, table, details.markdown-frontmatter")).toBeNull();
   });
+
+  it("keeps code underscores, intraword double underscores, and escapes consistent with MarkdownView", () => {
+    const markdown = "## 构造器 `__init__` 方法\n\n环境变量 APP__DB__HOST 与 `*wildcard*`。\n";
+    const preview = render(<FirstReadablePreview document={source(markdown)} />);
+    const previewHeading = preview.container.querySelector("h2")?.textContent;
+    const previewParagraph = preview.container.querySelector("p")?.textContent;
+    preview.unmount();
+
+    const enhanced = render(<MarkdownView markdown={markdown} />);
+    expect(previewHeading).toBe("构造器 __init__ 方法");
+    expect(previewParagraph).toBe("环境变量 APP__DB__HOST 与 *wildcard*。");
+    expect(enhanced.container.querySelector("h2")?.textContent).toBe(previewHeading);
+    expect(enhanced.container.querySelector("p")?.textContent).toBe(previewParagraph);
+  });
 });
