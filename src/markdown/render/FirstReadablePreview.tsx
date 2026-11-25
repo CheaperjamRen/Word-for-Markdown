@@ -27,13 +27,29 @@ function readableInlineText(markdown: string, deletionRuns: readonly string[] = 
     if (run.length <= markerLength * 2) continue;
     readable = readable.split(run).join(run.slice(markerLength, -markerLength));
   }
-  return readable
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/`+([^`]+)`+/g, "$1")
-    .replace(/(\*\*|__)([\s\S]*?)\1/g, "$2")
-    .replace(/(^|\s)[*_]([^*_]+)[*_](?=\s|[.,!?;:]|$)/g, "$1$2")
-    .replace(/\\([\\`*_[\]{}()#+.!>-])/g, "$1")
+  const codeSpans: string[] = [];
+  const escapedChars: string[] = [];
+  const withPlaceholders = readable
+    .replace(/(?<!`)(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/g, (_match, _ticks: string, rawCode: string) => {
+      const code = rawCode.length >= 2 && rawCode.startsWith(" ") && rawCode.endsWith(" ") && /[^ ]/.test(rawCode)
+        ? rawCode.slice(1, -1)
+        : rawCode;
+      const index = codeSpans.push(code) - 1;
+      return `\u0000CODE${index}\u0000`;
+    })
+    .replace(/\\([!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~])/g, (_match, char: string) => {
+      const index = escapedChars.push(char) - 1;
+      return `\u0000ESC${index}\u0000`;
+    })
+    .replace(/!\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*\)/g, "$1");
+  return withPlaceholders
+    .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, "$1")
+    .replace(/(^|[^\p{L}\p{N}_])__(?=\S)([\s\S]*?\S)__(?=[^\p{L}\p{N}_]|$)/gu, "$1$2")
+    .replace(/(^|\s)\*([^*]+)\*(?=\s|[.,!?;:]|$)/g, "$1$2")
+    .replace(/(^|[^\p{L}\p{N}_])_([^\s_](?:[^_]*?[^\s_])?)_(?=[^\p{L}\p{N}_]|$)/gu, "$1$2")
+    .replace(/\u0000ESC(\d+)\u0000/g, (_match, index: string) => escapedChars[Number(index)] ?? "")
+    .replace(/\u0000CODE(\d+)\u0000/g, (_match, index: string) => codeSpans[Number(index)] ?? "")
     .replace(/\s+/g, " ")
     .trim();
 }

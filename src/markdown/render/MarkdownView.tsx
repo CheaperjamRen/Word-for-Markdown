@@ -1,8 +1,11 @@
 import {
+  createContext,
   createElement,
   memo,
+  useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -11,7 +14,7 @@ import {
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Highlight, themes, type Language } from "prism-react-renderer";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -23,6 +26,12 @@ import { buildOutline } from "../outline";
 import { resolveRelativeWindowsPath } from "../../desktop/target-resolver";
 import { useLocale } from "../../i18n/locale";
 import type { ReadingTheme } from "../../reading/preferences";
+import {
+  materializeMermaidSvg,
+  nextMermaidRenderSequence,
+  readCachedMermaidSvg,
+  writeCachedMermaidSvg,
+} from "./mermaid-cache";
 
 export interface MarkdownViewProps {
   markdown: string;
@@ -126,13 +135,37 @@ function MermaidBlock({
 }) {
   const { t } = useLocale();
   const reactId = useId();
+  const sanitizedReactId = useMemo(() => reactId.replace(/[^a-z0-9_-]/gi, ""), [reactId]);
+  const instanceDiagramId = `markdown-mermaid-${sanitizedReactId}`;
   const hostRef = useRef<HTMLDivElement>(null);
+  const appliedCacheKeyRef = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const mermaidTheme = readingTheme === "night" ? "dark" : "neutral";
+  const cacheKey = `${mermaidTheme}\0${source}`;
+  const cachedEntry = readCachedMermaidSvg(cacheKey);
+
+  useLayoutEffect(() => {
+    if (cachedEntry === undefined || !hostRef.current) return;
+    setFailed(false);
+    if (appliedCacheKeyRef.current !== cacheKey || hostRef.current.childElementCount === 0) {
+      hostRef.current.innerHTML = materializeMermaidSvg(cachedEntry, instanceDiagramId);
+      appliedCacheKeyRef.current = cacheKey;
+    }
+  }, [cacheKey, cachedEntry, instanceDiagramId]);
 
   useEffect(() => {
+    const latestCached = readCachedMermaidSvg(cacheKey);
+    if (latestCached !== undefined) {
+      if (hostRef.current && (appliedCacheKeyRef.current !== cacheKey || hostRef.current.childElementCount === 0)) {
+        hostRef.current.innerHTML = materializeMermaidSvg(latestCached, instanceDiagramId);
+        appliedCacheKeyRef.current = cacheKey;
+      }
+      setFailed(false);
+      return;
+    }
     let cancelled = false;
+    let diagramId: string | null = null;
     setFailed(false);
-    hostRef.current?.replaceChildren();
 
     void import("mermaid")
       .then(async ({ default: mermaid }) => {
@@ -141,21 +174,31 @@ function MermaidBlock({
           startOnLoad: false,
           securityLevel: "strict",
           htmlLabels: false,
-          theme: readingTheme === "night" ? "dark" : "neutral",
+          theme: mermaidTheme,
         });
-        const diagramId = `markdown-mermaid-${reactId.replace(/[^a-z0-9_-]/gi, "")}`;
+        diagramId = `${instanceDiagramId}-${nextMermaidRenderSequence()}`;
         const { svg } = await mermaid.render(diagramId, source);
         if (cancelled || !hostRef.current) return;
-        hostRef.current.innerHTML = svg;
+        const entry = { diagramId, svg };
+        writeCachedMermaidSvg(cacheKey, entry);
+        hostRef.current.innerHTML = materializeMermaidSvg(entry, instanceDiagramId);
+        appliedCacheKeyRef.current = cacheKey;
       })
       .catch(() => {
-        if (!cancelled) setFailed(true);
+        if (diagramId) {
+          document.getElementById(`d${diagramId}`)?.remove();
+          document.getElementById(diagramId)?.remove();
+        }
+        if (cancelled) return;
+        appliedCacheKeyRef.current = null;
+        hostRef.current?.replaceChildren();
+        setFailed(true);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [reactId, readingTheme, source]);
+  }, [cacheKey, instanceDiagramId, mermaidTheme, source]);
 
   return (
     <div className="markdown-mermaid" data-testid="mermaid-diagram" {...sourceProps}>
@@ -227,95 +270,14 @@ export const MarkdownView = memo(function MarkdownView({
     };
   }, [blockViewSpans]);
   const rehypePlugins = useMemo(() => [rehypeKatex, mathLocationHooks], [mathLocationHooks]);
-  // Stable renderer map: a new function identity per render would make react-markdown
-  // remount every code block, diagram and table on each parent update (e.g. scrolling).
-  const components = useMemo<Components>(() => {
-    const sourceProps = (node: {
-      position?: { start?: { offset?: number }; end?: { offset?: number } };
-    } | undefined): HTMLAttributes<HTMLElement> => {
-      const start = node?.position?.start?.offset;
-      const end = node?.position?.end?.offset;
-      if (start === undefined || end === undefined) return {};
-      const absoluteStart = bodyOffset + start;
-      const absoluteEnd = bodyOffset + end;
-      const span = blockViewSpansByRange.get(`${absoluteStart}:${absoluteEnd}`);
-      return span ? {
-        "data-block-view-key": span.blockViewKey,
-        "data-source-view-start": span.start,
-        "data-source-view-end": span.end,
-      } as HTMLAttributes<HTMLElement> : {};
-    };
-    const heading = (
-      level: number,
-      node: { position?: { start?: { offset?: number }; end?: { offset?: number } } } | undefined,
-      rest: Record<string, unknown>,
-    ) => {
-      const start = node?.position?.start?.offset;
-      const id = start === undefined ? undefined : headingIdsByOffset.get(bodyOffset + start);
-      return createElement(`h${level}`, { ...sourceProps(node), ...rest, id });
-    };
-    return {
-      h1: ({ node, ...rest }) => heading(1, node, rest),
-      h2: ({ node, ...rest }) => heading(2, node, rest),
-      h3: ({ node, ...rest }) => heading(3, node, rest),
-      h4: ({ node, ...rest }) => heading(4, node, rest),
-      h5: ({ node, ...rest }) => heading(5, node, rest),
-      h6: ({ node, ...rest }) => heading(6, node, rest),
-      p: ({ node, ...rest }) => <p {...sourceProps(node)} {...rest} />,
-      blockquote: ({ node, ...rest }) => <blockquote className="markdown-quote" {...sourceProps(node)} {...rest} />,
-      ul: ({ node, ...rest }) => <ul {...sourceProps(node)} {...rest} />,
-      ol: ({ node, ...rest }) => <ol {...sourceProps(node)} {...rest} />,
-      hr: ({ node, ...rest }) => <hr {...sourceProps(node)} {...rest} />,
-      a: ({ href, children }) => (
-        <a
-          aria-disabled={onOpenLink ? undefined : true}
-          className={onOpenLink ? undefined : "markdown-link--disabled"}
-          href={href}
-          onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-            event.preventDefault();
-            if (href) onOpenLink?.(href);
-          }}
-          tabIndex={onOpenLink ? undefined : -1}
-        >
-          {children}
-        </a>
-      ),
-      code: ({ children, className, node }) => {
-        const code = String(children);
-        const language = /language-([^\s]+)/.exec(className ?? "")?.[1] ?? "";
-        const fenced = Boolean(language) || code.endsWith("\n");
-        if (!fenced) return <code>{children}</code>;
-        if (language.toLowerCase() === "mermaid") {
-          return <MermaidBlock
-            readingTheme={readingTheme}
-            source={code.replace(/\n$/, "")}
-            sourceProps={sourceProps(node) as HTMLAttributes<HTMLDivElement>}
-          />;
-        }
-        return <CodeBlock
-          code={code}
-          language={language}
-          readingTheme={readingTheme}
-          sourceProps={sourceProps(node) as HTMLAttributes<HTMLDivElement>}
-        />;
-      },
-      pre: ({ children }) => <>{children}</>,
-      img: ({ src, alt }) => {
-        const localPath = documentPath && src ? resolveRelativeWindowsPath(documentPath, src) : null;
-        let resolvedSrc = src;
-        if (localPath) {
-          try { resolvedSrc = convertFileSrc(localPath); } catch { resolvedSrc = src; }
-        }
-        return <img className="markdown-image" src={resolvedSrc} alt={alt ?? ""} loading="lazy" decoding="async" />;
-      },
-      table: ({ children, node }) => (
-        <div className="markdown-table-wrap" {...sourceProps(node)}>
-          <table>{children}</table>
-        </div>
-      ),
-      input: ({ node: _node, ...props }) => <input {...props} />,
-    };
-  }, [blockViewSpansByRange, bodyOffset, documentPath, headingIdsByOffset, onOpenLink, readingTheme]);
+  const renderContext = useMemo<MarkdownRenderContextValue>(() => ({
+    blockViewSpansByRange,
+    bodyOffset,
+    documentPath,
+    headingIdsByOffset,
+    onOpenLink,
+    readingTheme,
+  }), [blockViewSpansByRange, bodyOffset, documentPath, headingIdsByOffset, onOpenLink, readingTheme]);
 
   return (
     <div className="markdown-view" data-reading-render-ready="true" data-testid="markdown-view">
@@ -330,15 +292,157 @@ export const MarkdownView = memo(function MarkdownView({
         </details>
       ) : null}
 
-      <ReactMarkdown
-        remarkPlugins={REMARK_PLUGINS}
-        rehypePlugins={rehypePlugins}
-        components={components}
-      >
-        {body}
-      </ReactMarkdown>
+      <MarkdownRenderContext.Provider value={renderContext}>
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          rehypePlugins={rehypePlugins}
+          components={MARKDOWN_COMPONENTS}
+        >
+          {body}
+        </ReactMarkdown>
+      </MarkdownRenderContext.Provider>
     </div>
   );
 });
+
+interface AstNode {
+  position?: { start?: { offset?: number }; end?: { offset?: number } };
+}
+
+interface MarkdownRenderContextValue {
+  blockViewSpansByRange: ReadonlyMap<string, BlockViewSpan>;
+  bodyOffset: number;
+  documentPath?: string;
+  headingIdsByOffset: ReadonlyMap<number, string>;
+  onOpenLink?: (href: string) => void;
+  readingTheme: ReadingTheme;
+}
+
+const MarkdownRenderContext = createContext<MarkdownRenderContextValue>({
+  blockViewSpansByRange: new Map(),
+  bodyOffset: 0,
+  headingIdsByOffset: new Map(),
+  readingTheme: "soft-white",
+});
+
+function nodeSourceProps(
+  ctx: MarkdownRenderContextValue,
+  node: AstNode | undefined,
+): HTMLAttributes<HTMLElement> {
+  const start = node?.position?.start?.offset;
+  const end = node?.position?.end?.offset;
+  if (start === undefined || end === undefined) return {};
+  const absoluteStart = ctx.bodyOffset + start;
+  const absoluteEnd = ctx.bodyOffset + end;
+  const span = ctx.blockViewSpansByRange.get(`${absoluteStart}:${absoluteEnd}`);
+  return span ? {
+    "data-block-view-key": span.blockViewKey,
+    "data-source-view-start": span.start,
+    "data-source-view-end": span.end,
+  } as HTMLAttributes<HTMLElement> : {};
+}
+
+function makeHeadingComponent(level: 1 | 2 | 3 | 4 | 5 | 6) {
+  return function MarkdownHeading({ node, ...rest }: HTMLAttributes<HTMLHeadingElement> & ExtraProps) {
+    const ctx = useContext(MarkdownRenderContext);
+    const start = node?.position?.start?.offset;
+    const id = start === undefined ? undefined : ctx.headingIdsByOffset.get(ctx.bodyOffset + start);
+    return createElement(`h${level}`, { ...nodeSourceProps(ctx, node), ...rest, id });
+  };
+}
+
+const PreBlockContext = createContext(false);
+
+// Module-constant renderer map: component identities never change across theme, link,
+// path, or span updates, so react-markdown updates blocks in place without remounting.
+const MARKDOWN_COMPONENTS: Components = {
+  h1: makeHeadingComponent(1),
+  h2: makeHeadingComponent(2),
+  h3: makeHeadingComponent(3),
+  h4: makeHeadingComponent(4),
+  h5: makeHeadingComponent(5),
+  h6: makeHeadingComponent(6),
+  p: function MarkdownParagraph({ node, ...rest }) {
+    const ctx = useContext(MarkdownRenderContext);
+    return <p {...nodeSourceProps(ctx, node)} {...rest} />;
+  },
+  blockquote: function MarkdownBlockquote({ node, ...rest }) {
+    const ctx = useContext(MarkdownRenderContext);
+    return <blockquote className="markdown-quote" {...nodeSourceProps(ctx, node)} {...rest} />;
+  },
+  ul: function MarkdownUnorderedList({ node, ...rest }) {
+    const ctx = useContext(MarkdownRenderContext);
+    return <ul {...nodeSourceProps(ctx, node)} {...rest} />;
+  },
+  ol: function MarkdownOrderedList({ node, ...rest }) {
+    const ctx = useContext(MarkdownRenderContext);
+    return <ol {...nodeSourceProps(ctx, node)} {...rest} />;
+  },
+  hr: function MarkdownRule({ node, ...rest }) {
+    const ctx = useContext(MarkdownRenderContext);
+    return <hr {...nodeSourceProps(ctx, node)} {...rest} />;
+  },
+  a: function MarkdownLink({ href, children }) {
+    const { onOpenLink } = useContext(MarkdownRenderContext);
+    return (
+      <a
+        aria-disabled={onOpenLink ? undefined : true}
+        className={onOpenLink ? undefined : "markdown-link--disabled"}
+        href={href}
+        onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+          event.preventDefault();
+          if (href) onOpenLink?.(href);
+        }}
+        tabIndex={onOpenLink ? undefined : -1}
+      >
+        {children}
+      </a>
+    );
+  },
+  code: function MarkdownCode({ children, className, node }) {
+    const ctx = useContext(MarkdownRenderContext);
+    const inPre = useContext(PreBlockContext);
+    const code = children == null ? "" : String(children);
+    const language = /language-([^\s]+)/.exec(className ?? "")?.[1] ?? "";
+    const fenced = inPre || Boolean(language) || code.endsWith("\n");
+    if (!fenced) return <code>{children}</code>;
+    if (language.toLowerCase() === "mermaid") {
+      return <MermaidBlock
+        readingTheme={ctx.readingTheme}
+        source={code.replace(/\n$/, "")}
+        sourceProps={nodeSourceProps(ctx, node) as HTMLAttributes<HTMLDivElement>}
+      />;
+    }
+    return <CodeBlock
+      code={code}
+      language={language}
+      readingTheme={ctx.readingTheme}
+      sourceProps={nodeSourceProps(ctx, node) as HTMLAttributes<HTMLDivElement>}
+    />;
+  },
+  pre: function MarkdownPre({ children }) {
+    return <PreBlockContext.Provider value={true}>{children}</PreBlockContext.Provider>;
+  },
+  img: function MarkdownImage({ src, alt }) {
+    const { documentPath } = useContext(MarkdownRenderContext);
+    const localPath = documentPath && src ? resolveRelativeWindowsPath(documentPath, src) : null;
+    let resolvedSrc = src;
+    if (localPath) {
+      try { resolvedSrc = convertFileSrc(localPath); } catch { resolvedSrc = src; }
+    }
+    return <img className="markdown-image" src={resolvedSrc} alt={alt ?? ""} loading="lazy" decoding="async" />;
+  },
+  table: function MarkdownTable({ children, node }) {
+    const ctx = useContext(MarkdownRenderContext);
+    return (
+      <div className="markdown-table-wrap" {...nodeSourceProps(ctx, node)}>
+        <table>{children}</table>
+      </div>
+    );
+  },
+  input: function MarkdownInput({ node: _node, ...props }) {
+    return <input {...props} />;
+  },
+};
 
 export default MarkdownView;

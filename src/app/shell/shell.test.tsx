@@ -1731,4 +1731,52 @@ describe("light desktop shell", () => {
     ));
     expect(document.getSelection()?.toString()).not.toBe("Paragraph one");
   });
+
+  it("navigates anchor links for headings containing underscored inline code and underscore tokens without mangling ids", async () => {
+    const user = userEvent.setup();
+    const encoder = new TextEncoder();
+    const markdown = [
+      "[跳到构造器](#构造器-__init__-方法) · [跳到分隔符](#分隔符-_-与-_-对比)",
+      "",
+      "## 构造器 `__init__` 方法",
+      "",
+      "## 分隔符 `_` 与 `_` 对比",
+    ].join("\n");
+    const host = hostFixture(["C:\\docs\\anchors.md"]);
+    vi.mocked(host.openDocument).mockResolvedValue({
+      canonicalPath: "C:\\docs\\anchors.md",
+      bytes: [...encoder.encode(markdown)],
+      version: VERSION,
+    });
+    const scrolledIds: string[] = [];
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: function (this: HTMLElement) {
+        if (this.id) scrolledIds.push(this.id);
+      },
+    });
+
+    try {
+      render(<App host={host} />);
+      const initLink = await screen.findByRole("link", { name: "跳到构造器" });
+      const sepLink = screen.getByRole("link", { name: "跳到分隔符" });
+
+      await user.click(initLink);
+      await user.click(sepLink);
+
+      expect(scrolledIds).toEqual(["构造器-__init__-方法", "分隔符-_-与-_-对比"]);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+      } else {
+        delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+      }
+    }
+  });
 });

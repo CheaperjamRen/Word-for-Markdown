@@ -7,20 +7,44 @@ export interface OutlineItem {
 }
 
 function readableHeadingText(value: string): string {
-  return value
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/[`*_~]/g, "")
-    .replace(/\\([\\`*_[\]{}()#+.!>-])/g, "$1")
+  const codeSpans: string[] = [];
+  const escapedChars: string[] = [];
+  const withPlaceholders = value
+    .replace(/(?<!`)(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/g, (_match, _ticks: string, rawCode: string) => {
+      const code = rawCode.length >= 2 && rawCode.startsWith(" ") && rawCode.endsWith(" ") && /[^ ]/.test(rawCode)
+        ? rawCode.slice(1, -1)
+        : rawCode;
+      const index = codeSpans.push(code) - 1;
+      return `\u0000CODE${index}\u0000`;
+    })
+    .replace(/\\([!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~])/g, (_match, char: string) => {
+      const index = escapedChars.push(char) - 1;
+      return `\u0000ESC${index}\u0000`;
+    })
+    .replace(/!\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*\)/g, "$1");
+  const stripped = withPlaceholders
+    .replace(/(\*\*|~~)(?=\S)([\s\S]*?\S)\1/g, "$2")
+    .replace(/(^|[^\p{L}\p{N}_])__(?=\S)([\s\S]*?\S)__(?=[^\p{L}\p{N}_]|$)/gu, "$1$2")
+    .replace(/\*([^\s*](?:[^*]*?[^\s*])?)\*/g, "$1")
+    .replace(/(^|[^\p{L}\p{N}_])_([^\s_](?:[^_]*?[^\s_])?)_(?=[^\p{L}\p{N}_]|$)/gu, "$1$2");
+  return stripped
+    .replace(/\u0000ESC(\d+)\u0000/g, (_match, index: string) => escapedChars[Number(index)] ?? "")
+    .replace(/\u0000CODE(\d+)\u0000/g, (_match, index: string) => codeSpans[Number(index)] ?? "")
     .trim();
 }
 
-export function headingId(value: string): string {
-  const text = readableHeadingText(value)
+function slugifyHeadingText(readableText: string): string {
+  const slug = readableText
     .toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
     .trim()
     .replace(/[\s-]+/g, "-");
-  return text || "heading";
+  return slug || "heading";
+}
+
+export function headingId(value: string): string {
+  return slugifyHeadingText(readableHeadingText(value));
 }
 
 // Outline parsing is a full scan of the document; several views (outline pane,
@@ -63,7 +87,7 @@ function parseOutline(markdown: string): OutlineItem[] {
   const hasFrontmatter = lines[0]?.trim() === "---" && lines.slice(1).some((line) => line.trim() === "---");
   let inFrontmatter = hasFrontmatter;
   let frontmatterClosed = !hasFrontmatter;
-  let fence: string | null = null;
+  let fence: { char: "`" | "~"; length: number } | null = null;
 
   for (const [sourceLine, line] of lines.entries()) {
     if (!frontmatterClosed && sourceLine === 0 && line.trim() === "---") {
@@ -77,25 +101,33 @@ function parseOutline(markdown: string): OutlineItem[] {
       }
       continue;
     }
-    const fenceMatch = /^\s{0,3}(```+|~~~+)/.exec(line);
-    if (fenceMatch) {
-      fence = fence === null ? fenceMatch[1][0] : null;
+    if (fence === null) {
+      const openFence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (openFence && !(openFence[1][0] === "`" && openFence[2].includes("`"))) {
+        fence = { char: openFence[1][0] as "`" | "~", length: openFence[1].length };
+        continue;
+      }
+    } else {
+      const closeFence = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+      if (closeFence && closeFence[1][0] === fence.char && closeFence[1].length >= fence.length) {
+        fence = null;
+      }
       continue;
     }
-    if (fence !== null) continue;
-    const match = /^\s{0,3}(#{1,6})\s+(.+?)\s*$/.exec(line);
+    const match = /^( {0,3})(#{1,6})[ \t]+(.+?)[ \t]*$/.exec(line);
     if (!match) continue;
-    const text = readableHeadingText(match[2].replace(/\s+#+\s*$/, ""));
+    const rawHeading = match[3].replace(/(?:^|[ \t]+)#+[ \t]*$/, "");
+    const text = readableHeadingText(rawHeading);
     if (!text) continue;
-    const base = headingId(text);
+    const base = slugifyHeadingText(text);
     const occurrence = used.get(base) ?? 0;
     used.set(base, occurrence + 1);
     result.push({
       id: occurrence === 0 ? base : `${base}-${occurrence}`,
       text,
-      level: match[1].length,
+      level: match[2].length,
       sourceLine,
-      sourceOffset: lineOffsets[sourceLine]!,
+      sourceOffset: lineOffsets[sourceLine]! + match[1].length,
     });
   }
   return result;

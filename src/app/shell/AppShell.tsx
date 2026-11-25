@@ -312,9 +312,11 @@ export function AppShell({
     }
     switch (target.kind) {
       case "anchor": {
-        let normalizedId = target.headingId;
-        try { normalizedId = headingId(decodeURIComponent(target.headingId)); } catch { /* keep the raw fragment */ }
-        const heading = document.getElementById(normalizedId);
+        let decodedFragment = target.headingId;
+        try { decodedFragment = decodeURIComponent(target.headingId); } catch { /* keep the raw fragment */ }
+        const heading =
+          document.getElementById(decodedFragment) ??
+          document.getElementById(headingId(decodedFragment));
         if (!heading) setLinkError(t("error.headingNotFound"));
         else heading.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
@@ -346,9 +348,12 @@ export function AppShell({
     }
   }, [controller, host, locale, t]);
   const renderReading = useCallback(
-    (blockViewSpans: readonly BlockViewSpan[], onOpenLink: ((href: string) => void) | undefined) =>
-      activeDocument ? renderDocument(activeDocument, blockViewSpans, onOpenLink, readingPreferences.theme) : null,
-    [activeDocument, readingPreferences.theme, renderDocument],
+    (
+      blockViewSpans: readonly BlockViewSpan[],
+      onOpenLink: ((href: string) => void) | undefined,
+      tab?: DocumentSession,
+    ) => (tab ? renderDocument(tab, blockViewSpans, onOpenLink, readingPreferences.theme) : null),
+    [readingPreferences.theme, renderDocument],
   );
   const closeFind = () => {
     const invoker = findSession?.invoker;
